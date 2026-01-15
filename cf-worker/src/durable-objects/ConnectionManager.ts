@@ -1,12 +1,33 @@
 /**
  * Durable Object for managing persistent WebSocket connections
  * Maintains connection between Cloudflare Worker and local Rust app
+ * Stores dynamic tool registry received from connected clients
  */
+
+interface ToolParameter {
+	name: string;
+	type: string;
+	description: string;
+	required: boolean;
+	enum?: string[];
+	default?: any;
+}
+
+interface ToolDefinition {
+	id: string;
+	name: string;
+	description: string;
+	category: string;
+	parameters: ToolParameter[];
+	returnsObservation: boolean;
+}
 
 interface Session {
 	webSocket: WebSocket;
 	clientId: string;
 	connectedAt: number;
+	clientName?: string;
+	clientVersion?: string;
 }
 
 export class ConnectionManager {
@@ -14,12 +35,14 @@ export class ConnectionManager {
 	private sessions: Map<string, Session>;
 	private pendingCommands: Map<string, { resolve: Function; reject: Function; timeout: any }>;
 	private commandIdCounter: number;
+	private toolRegistry: Map<string, ToolDefinition>;
 
 	constructor(state: DurableObjectState, env: any) {
 		this.state = state;
 		this.sessions = new Map();
 		this.pendingCommands = new Map();
 		this.commandIdCounter = 0;
+		this.toolRegistry = new Map();
 	}
 
 	async fetch(request: Request): Promise<Response> {
@@ -60,11 +83,40 @@ export class ConnectionManager {
 				connected: this.sessions.size > 0,
 				sessions: Array.from(this.sessions.values()).map(s => ({
 					clientId: s.clientId,
+					clientName: s.clientName,
+					clientVersion: s.clientVersion,
 					connectedAt: new Date(s.connectedAt).toISOString(),
 					uptime: Date.now() - s.connectedAt,
 				})),
+				toolCount: this.toolRegistry.size,
 			};
 			return new Response(JSON.stringify(status), {
+				headers: { 'Content-Type': 'application/json' },
+			});
+		}
+
+		// Internal API: Get available tools from connected client
+		if (url.pathname === '/tools') {
+			const tools = Array.from(this.toolRegistry.values());
+			return new Response(JSON.stringify({
+				connected: this.sessions.size > 0,
+				tools,
+			}), {
+				headers: { 'Content-Type': 'application/json' },
+			});
+		}
+
+		// Internal API: Get single tool definition
+		if (url.pathname.startsWith('/tools/')) {
+			const toolId = url.pathname.replace('/tools/', '');
+			const tool = this.toolRegistry.get(toolId);
+			if (tool) {
+				return new Response(JSON.stringify(tool), {
+					headers: { 'Content-Type': 'application/json' },
+				});
+			}
+			return new Response(JSON.stringify({ error: 'Tool not found' }), {
+				status: 404,
 				headers: { 'Content-Type': 'application/json' },
 			});
 		}
@@ -88,14 +140,30 @@ export class ConnectionManager {
 		webSocket.addEventListener('message', (event: MessageEvent) => {
 			try {
 				const data = JSON.parse(event.data as string);
-				
-				// Handle handshake
+
+				// Handle handshake with tool registration
 				if (data.type === 'handshake') {
 					console.log(`Handshake from ${data.client} v${data.version}`);
+
+					// Update session with client info
+					session.clientName = data.client;
+					session.clientVersion = data.version;
+
+					// Register tools from client
+					if (data.tools && Array.isArray(data.tools)) {
+						// Clear previous tools and register new ones
+						this.toolRegistry.clear();
+						for (const tool of data.tools) {
+							this.toolRegistry.set(tool.id, tool);
+						}
+						console.log(`Registered ${data.tools.length} tools from client`);
+					}
+
 					webSocket.send(JSON.stringify({
 						type: 'handshake_ack',
 						server: 'cloudflare-worker',
-						timestamp: Date.now()
+						timestamp: Date.now(),
+						toolsRegistered: this.toolRegistry.size
 					}));
 					return;
 				}
@@ -117,7 +185,11 @@ export class ConnectionManager {
 		webSocket.addEventListener('close', () => {
 			console.log(`Client disconnected: ${clientId}`);
 			this.sessions.delete(clientId);
-			
+
+			// Clear tool registry when client disconnects
+			this.toolRegistry.clear();
+			console.log('Tool registry cleared');
+
 			// Reject all pending commands for this session
 			for (const [commandId, pending] of this.pendingCommands.entries()) {
 				clearTimeout(pending.timeout);
@@ -135,7 +207,7 @@ export class ConnectionManager {
 	private async sendCommandToClient(command: any): Promise<any> {
 		// Get first available session
 		const session = Array.from(this.sessions.values())[0];
-		
+
 		if (!session) {
 			throw new Error('No client connected');
 		}

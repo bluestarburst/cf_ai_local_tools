@@ -25,6 +25,8 @@ export interface Agent {
   maxIterations: number;
   metadata: Metadata;
   isDefault?: boolean;
+  isPinned?: boolean; // Pinned agents appear at top of list
+  isDeletable?: boolean; // false = cannot be deleted (default true)
 }
 
 export interface AgentConfig {
@@ -59,6 +61,9 @@ export interface ExecutionStep {
     result: any;
     error?: string;
   };
+  // Track which agent created this step (for delegation scenarios)
+  agentId?: string;
+  agentName?: string;
 }
 
 export interface ConversationMessage {

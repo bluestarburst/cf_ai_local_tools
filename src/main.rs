@@ -1,11 +1,237 @@
 use anyhow::{Context, Result};
 use rustautogui::{MouseClick, RustAutoGui};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::time::Duration;
 use tokio::time::sleep;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use futures_util::{SinkExt, StreamExt};
 use tracing::{info, error, warn};
+
+/// Tool parameter definition
+#[derive(Debug, Serialize, Clone)]
+struct ToolParameter {
+    name: String,
+    #[serde(rename = "type")]
+    param_type: String,
+    description: String,
+    required: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "enum")]
+    enum_values: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    default: Option<serde_json::Value>,
+}
+
+/// Tool definition sent to worker
+#[derive(Debug, Serialize, Clone)]
+struct ToolDefinition {
+    id: String,
+    name: String,
+    description: String,
+    category: String,
+    parameters: Vec<ToolParameter>,
+    #[serde(rename = "returnsObservation")]
+    returns_observation: bool,
+}
+
+/// Get all available tools this client can execute
+fn get_available_tools() -> Vec<ToolDefinition> {
+    vec![
+        ToolDefinition {
+            id: "mouse_move".into(),
+            name: "Mouse Move".into(),
+            description: "Move the mouse cursor to specified coordinates".into(),
+            category: "mouse".into(),
+            parameters: vec![
+                ToolParameter {
+                    name: "x".into(),
+                    param_type: "number".into(),
+                    description: "X coordinate to move to".into(),
+                    required: true,
+                    enum_values: None,
+                    default: None,
+                },
+                ToolParameter {
+                    name: "y".into(),
+                    param_type: "number".into(),
+                    description: "Y coordinate to move to".into(),
+                    required: true,
+                    enum_values: None,
+                    default: None,
+                },
+                ToolParameter {
+                    name: "duration".into(),
+                    param_type: "number".into(),
+                    description: "Duration of movement in seconds".into(),
+                    required: false,
+                    enum_values: None,
+                    default: Some(json!(1.0)),
+                },
+            ],
+            returns_observation: true,
+        },
+        ToolDefinition {
+            id: "mouse_click".into(),
+            name: "Mouse Click".into(),
+            description: "Click a mouse button at current position".into(),
+            category: "mouse".into(),
+            parameters: vec![
+                ToolParameter {
+                    name: "button".into(),
+                    param_type: "string".into(),
+                    description: "Which button to click".into(),
+                    required: true,
+                    enum_values: Some(vec!["left".into(), "right".into(), "middle".into()]),
+                    default: None,
+                },
+            ],
+            returns_observation: true,
+        },
+        ToolDefinition {
+            id: "mouse_scroll".into(),
+            name: "Mouse Scroll".into(),
+            description: "Scroll the mouse wheel in a direction".into(),
+            category: "mouse".into(),
+            parameters: vec![
+                ToolParameter {
+                    name: "direction".into(),
+                    param_type: "string".into(),
+                    description: "Direction to scroll".into(),
+                    required: true,
+                    enum_values: Some(vec!["up".into(), "down".into(), "left".into(), "right".into()]),
+                    default: None,
+                },
+                ToolParameter {
+                    name: "intensity".into(),
+                    param_type: "number".into(),
+                    description: "How much to scroll (1-10)".into(),
+                    required: false,
+                    enum_values: None,
+                    default: Some(json!(3)),
+                },
+            ],
+            returns_observation: true,
+        },
+        ToolDefinition {
+            id: "keyboard_input".into(),
+            name: "Keyboard Input".into(),
+            description: "Type text using the keyboard".into(),
+            category: "keyboard".into(),
+            parameters: vec![
+                ToolParameter {
+                    name: "text".into(),
+                    param_type: "string".into(),
+                    description: "Text to type".into(),
+                    required: true,
+                    enum_values: None,
+                    default: None,
+                },
+            ],
+            returns_observation: true,
+        },
+        ToolDefinition {
+            id: "keyboard_command".into(),
+            name: "Keyboard Command".into(),
+            description: "Execute a keyboard shortcut (e.g., 'ctrl+c', 'cmd+v')".into(),
+            category: "keyboard".into(),
+            parameters: vec![
+                ToolParameter {
+                    name: "command".into(),
+                    param_type: "string".into(),
+                    description: "Keyboard shortcut to execute".into(),
+                    required: true,
+                    enum_values: None,
+                    default: None,
+                },
+            ],
+            returns_observation: true,
+        },
+        ToolDefinition {
+            id: "get_mouse_position".into(),
+            name: "Get Mouse Position".into(),
+            description: "Get the current mouse cursor position".into(),
+            category: "system".into(),
+            parameters: vec![],
+            returns_observation: true,
+        },
+        ToolDefinition {
+            id: "take_screenshot".into(),
+            name: "Take Screenshot".into(),
+            description: "Capture a screenshot of the screen".into(),
+            category: "system".into(),
+            parameters: vec![
+                ToolParameter {
+                    name: "region".into(),
+                    param_type: "string".into(),
+                    description: "Region to capture (full, window, custom)".into(),
+                    required: false,
+                    enum_values: Some(vec!["full".into(), "window".into(), "custom".into()]),
+                    default: Some(json!("full")),
+                },
+            ],
+            returns_observation: true,
+        },
+        ToolDefinition {
+            id: "web_search".into(),
+            name: "Web Search".into(),
+            description: "Search the web using SearXNG. Returns search results with URLs and summaries.".into(),
+            category: "search".into(),
+            parameters: vec![
+                ToolParameter {
+                    name: "query".into(),
+                    param_type: "string".into(),
+                    description: "The search query".into(),
+                    required: true,
+                    enum_values: None,
+                    default: None,
+                },
+                ToolParameter {
+                    name: "time_range".into(),
+                    param_type: "string".into(),
+                    description: "Time range filter".into(),
+                    required: false,
+                    enum_values: Some(vec!["day".into(), "week".into(), "month".into(), "year".into()]),
+                    default: None,
+                },
+                ToolParameter {
+                    name: "language".into(),
+                    param_type: "string".into(),
+                    description: "Language code (e.g., en, es, fr)".into(),
+                    required: false,
+                    enum_values: None,
+                    default: None,
+                },
+            ],
+            returns_observation: true,
+        },
+        ToolDefinition {
+            id: "fetch_url".into(),
+            name: "Fetch URL".into(),
+            description: "Fetch and parse content from a URL".into(),
+            category: "utility".into(),
+            parameters: vec![
+                ToolParameter {
+                    name: "url".into(),
+                    param_type: "string".into(),
+                    description: "URL to fetch".into(),
+                    required: true,
+                    enum_values: None,
+                    default: None,
+                },
+                ToolParameter {
+                    name: "extract_type".into(),
+                    param_type: "string".into(),
+                    description: "Type of content to extract".into(),
+                    required: false,
+                    enum_values: Some(vec!["text".into(), "links".into(), "images".into(), "all".into()]),
+                    default: Some(json!("text")),
+                },
+            ],
+            returns_observation: true,
+        },
+    ]
+}
 
 /// Command received from Cloudflare Worker
 #[derive(Debug, Deserialize)]
@@ -178,13 +404,16 @@ async fn connect_and_run(url: &str, handler: &AutomationHandler) -> Result<()> {
 
     let (mut write, mut read) = ws_stream.split();
 
-    // Send initial handshake
+    // Send initial handshake with available tools
+    let tools = get_available_tools();
     let handshake = serde_json::json!({
         "type": "handshake",
         "client": "rust-automation",
-        "version": env!("CARGO_PKG_VERSION")
+        "version": env!("CARGO_PKG_VERSION"),
+        "tools": tools
     });
-    
+
+    info!("Registering {} tools with server", tools.len());
     write
         .send(Message::Text(handshake.to_string()))
         .await

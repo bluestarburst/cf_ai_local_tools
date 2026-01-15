@@ -15,7 +15,7 @@ export interface ToolDefinition {
   id: string;
   name: string;
   description: string;
-  category: 'mouse' | 'keyboard' | 'system' | 'search' | 'utility';
+  category: 'mouse' | 'keyboard' | 'system' | 'search' | 'utility' | 'orchestration';
   parameters: ToolParameter[];
   returnsObservation: boolean; // Whether tool result is formatted as observation
 }
