@@ -34,6 +34,7 @@ interface AgentState {
   
   // Actions
   loadAgents: () => void;
+  setBackendAgents: (backendAgents: Agent[]) => void;
   setCurrentAgent: (agent: Agent) => void;
   createAgent: (config: Partial<Agent>) => Agent;
   updateCurrentAgent: (updates: Partial<Agent>) => void;
@@ -55,11 +56,44 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   loadAgents: () => {
     set({ isLoading: true });
     
-    // Load built-in agents from defaults
-    const builtInAgents = Object.values(DEFAULT_AGENTS).map((p) => ({
-      ...p.content,
-      isDefault: true, // Ensure built-in agents are marked as default
-    }));
+    // Check if we have cached backend presets
+    const backendPresetsStr = localStorage.getItem('backend-presets');
+    let agents: Agent[] = [];
+    
+    if (backendPresetsStr) {
+      try {
+        const backendPresets = JSON.parse(backendPresetsStr);
+        // Use backend agents if available
+        if (backendPresets.agents && Array.isArray(backendPresets.agents)) {
+          agents = backendPresets.agents.map((agent: any) => ({
+            id: agent.id,
+            name: agent.name,
+            purpose: agent.purpose,
+            systemPrompt: agent.system_prompt,
+            tools: agent.tools || [],
+            modelId: agent.model_id,
+            maxIterations: agent.max_iterations,
+            metadata: agent.metadata || {
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              version: '1.0.0',
+            },
+            isDefault: agent.is_locked !== false, // locked = built-in
+          }));
+        }
+      } catch (e) {
+        console.error('Failed to load backend presets:', e);
+      }
+    }
+    
+    // Fall back to built-in defaults if no backend presets
+    if (agents.length === 0) {
+      const builtInAgents = Object.values(DEFAULT_AGENTS).map((p) => ({
+        ...p.content,
+        isDefault: true,
+      }));
+      agents = builtInAgents;
+    }
     
     // Load modified built-in agents from localStorage and merge
     const modifiedBuiltInsStr = localStorage.getItem('modified-built-in-agents');
@@ -67,11 +101,11 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       try {
         const modifiedBuiltIns = JSON.parse(modifiedBuiltInsStr);
         Object.keys(modifiedBuiltIns).forEach((id) => {
-          const index = builtInAgents.findIndex((a) => a.id === id);
+          const index = agents.findIndex((a) => a.id === id);
           if (index >= 0) {
-            builtInAgents[index] = {
+            agents[index] = {
               ...modifiedBuiltIns[id],
-              isDefault: true, // Keep isDefault flag
+              isDefault: true,
             };
           }
         });
@@ -86,8 +120,11 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       .filter((p) => p.category === 'user-created')
       .map((p) => ({
         ...p.content,
-        isDefault: false, // Ensure user agents are marked as user-created
+        isDefault: false,
       }));
+    
+    // Combine all agents
+    const allAgents = [...agents, ...userAgents];
     
     // Get recent agents
     const recentIds = getRecentAgents();
@@ -96,7 +133,6 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     const current = getCurrentAgent();
     
     // Find the current agent in the loaded list to ensure reference consistency
-    const allAgents = [...builtInAgents, ...userAgents];
     const currentAgent = current 
       ? allAgents.find((a) => a.id === current.id) || current
       : allAgents[0] || null;
@@ -105,6 +141,34 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       agents: allAgents,
       recentAgentIds: recentIds,
       currentAgent,
+      isLoading: false,
+    });
+  },
+
+  setBackendAgents: (backendAgents: Agent[]) => {
+    console.log('[AgentStore] Setting backend agents:', backendAgents.length);
+    
+    // Load user-created agents from local storage
+    const userPresets = getAllAgentPresets();
+    const userAgents = Object.values(userPresets)
+      .filter((p) => p.category === 'user-created')
+      .map((p) => ({
+        ...p.content,
+        isDefault: false,
+      }));
+    
+    // Combine backend agents with user agents
+    const allAgents = [...backendAgents, ...userAgents];
+    
+    // Preserve current agent selection if it still exists
+    const { currentAgent } = get();
+    const updatedCurrentAgent = currentAgent
+      ? allAgents.find((a) => a.id === currentAgent.id) || allAgents[0] || null
+      : allAgents[0] || null;
+    
+    set({
+      agents: allAgents,
+      currentAgent: updatedCurrentAgent,
       isLoading: false,
     });
   },

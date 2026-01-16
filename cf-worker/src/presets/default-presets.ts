@@ -277,7 +277,6 @@ AVAILABLE AGENTS (use these exact IDs with delegate_to_agent):
 - desktop-automation-agent: Mouse/keyboard control, clicking, typing, GUI automation
 - web-research-agent: Browsing, searching, information gathering
 - code-assistant-agent: Code analysis, writing, debugging
-- general-assistant: Multi-step tasks requiring multiple tools
 - conversational-agent: User communication, clarifications
 
 HOW TO DELEGATE:
@@ -361,33 +360,33 @@ export const DEFAULT_AGENTS: Record<string, AgentPreset> = {
     isLocked: true,
   },
 
-  'general-assistant': {
-    id: 'general-assistant',
-    name: 'General Assistant',
-    description: 'Multi-purpose AI assistant for general tasks',
-    type: 'agent',
-    category: 'built-in',
-    content: {
-      id: 'general-assistant',
-      name: 'General Assistant',
-      purpose:
-        'Multi-purpose AI assistant for general tasks and automation',
-      systemPrompt: DEFAULT_PROMPTS['hybrid-cot-react'].content,
-      tools: [
-        { toolId: 'mouse_move', enabled: true },
-        { toolId: 'mouse_click', enabled: true },
-        { toolId: 'keyboard_input', enabled: true },
-        { toolId: 'keyboard_command', enabled: true },
-        { toolId: 'get_mouse_position', enabled: true },
-        { toolId: 'take_screenshot', enabled: true },
-      ],
-      modelId: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-      maxIterations: 5,
-      metadata: baseMetadata,
-    } as Agent,
-    metadata: baseMetadata,
-    isLocked: true,
-  },
+  // 'general-assistant': {
+  //   id: 'general-assistant',
+  //   name: 'General Assistant',
+  //   description: 'Multi-purpose AI assistant for general tasks',
+  //   type: 'agent',
+  //   category: 'built-in',
+  //   content: {
+  //     id: 'general-assistant',
+  //     name: 'General Assistant',
+  //     purpose:
+  //       'Multi-purpose AI assistant for general tasks and automation',
+  //     systemPrompt: DEFAULT_PROMPTS['hybrid-cot-react'].content,
+  //     tools: [
+  //       { toolId: 'mouse_move', enabled: true },
+  //       { toolId: 'mouse_click', enabled: true },
+  //       { toolId: 'keyboard_input', enabled: true },
+  //       { toolId: 'keyboard_command', enabled: true },
+  //       { toolId: 'get_mouse_position', enabled: true },
+  //       { toolId: 'take_screenshot', enabled: true },
+  //     ],
+  //     modelId: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+  //     maxIterations: 5,
+  //     metadata: baseMetadata,
+  //   } as Agent,
+  //   metadata: baseMetadata,
+  //   isLocked: true,
+  // },
 
   'web-research-agent': {
     id: 'web-research-agent',

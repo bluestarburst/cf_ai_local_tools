@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { AgentList } from './components/AgentList';
 import { AgentEditor } from './components/AgentEditor';
-import { ChatInterface } from './components/ChatInterface';
+import { ChatInterfaceV3 } from './components/ChatInterfaceV3';
 import { useAgentStore } from './store/agentStore';
 
 type View = 'editor' | 'chat';
@@ -75,7 +75,7 @@ function App() {
         </div>
 
         <div className="flex-1 overflow-hidden">
-          {currentView === 'editor' ? <AgentEditor /> : <ChatInterface />}
+          {currentView === 'editor' ? <AgentEditor /> : <ChatInterfaceV3 />}
         </div>
       </div>
 
