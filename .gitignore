@@ -31,3 +31,5 @@ wrangler.toml.local
 # Build outputs
 /cf-worker/.wrangler/
 /web-viewer/dist/
+
+tmp

@@ -74,6 +74,7 @@ export default {
 					response: response.response || response.text || '',
 					tool_calls: response.tool_calls || null,
 					usage: response.usage,
+					model: model,
 				}), {
 					headers: { ...corsHeaders, 'Content-Type': 'application/json' }
 				});

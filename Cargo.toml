@@ -21,6 +21,12 @@ websearch = { git = "https://github.com/xynehq/websearch.git" }
 url = "2.5"
 urlencoding = "2.1"
 async-trait = "0.1"
+thiserror = "2.0.17"
+regex = "1.12.2"
+toml = "0.9.11"
+dyn-clone = "1.0.20"
+env_logger = "0.10"
+futures = "0.3.31"
 
 [dev-dependencies]
 tokio-test = "0.4"

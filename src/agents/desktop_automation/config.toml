@@ -1,0 +1,40 @@
+[agent]
+id = "desktop-automation-agent"
+name = "Desktop Automation Agent"
+description = "Controls mouse and keyboard for desktop automation tasks"
+version = "1.0.0"
+
+[agent.capabilities]
+mouse_control = true
+keyboard_control = true
+screen_interaction = true
+automation = true
+
+[agent.tool_dependencies]
+required = [
+    "mouse_move",
+    "mouse_click", 
+    "mouse_scroll",
+    "keyboard_type",
+    "keyboard_hotkey",
+    "screen_screenshot",
+    "screen_get_position"
+]
+
+[agent.reasoning]
+model_id = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+max_iterations = 10
+separate_reasoning_model = false
+
+[agent.customization]
+# Optional custom prompt override
+# custom_prompt = "You are a specialized desktop automation agent..."
+
+# Optional tool configuration overrides
+[agent.tool_config.mouse_move]
+default_speed = 0.5
+smooth_enabled = true
+
+[agent.tool_config.keyboard_type]
+default_delay_ms = 50
+auto_correct = true

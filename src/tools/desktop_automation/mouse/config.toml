@@ -1,0 +1,49 @@
+[mouse_move]
+name = "Move Cursor"
+description = "Moves the mouse cursor to the specified coordinates"
+category = "desktop_automation"
+
+[mouse_move.parameters.x]
+type = "number"
+description = "X coordinate on screen"
+required = true
+
+[mouse_move.parameters.y]
+type = "number"
+description = "Y coordinate on screen"
+required = true
+
+[mouse_move.parameters.speed]
+type = "number"
+description = "Movement speed (0.0-1.0)"
+required = false
+default = 0.5
+
+[mouse_move.parameters.smooth]
+type = "boolean"
+description = "Enable smooth movement"
+required = false
+default = true
+
+[mouse_click]
+name = "Mouse Click"
+description = "Clicks a mouse button at the current cursor position"
+category = "desktop_automation"
+
+[mouse_click.parameters.button]
+type = "string"
+description = "Mouse button to click (left, right, middle)"
+required = true
+default = "left"
+
+[mouse_click.parameters.double_click]
+type = "boolean"
+description = "Perform a double-click"
+required = false
+default = false
+
+[mouse_click.parameters.delay_ms]
+type = "number"
+description = "Delay between clicks in milliseconds (for double-click)"
+required = false
+default = 50

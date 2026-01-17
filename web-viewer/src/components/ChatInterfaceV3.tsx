@@ -23,122 +23,142 @@ interface ChatMessage {
     isStreaming?: boolean;
 }
 
+const CollapsibleStepItem: React.FC<{
+    title: React.ReactNode;
+    content: React.ReactNode;
+    defaultExpanded?: boolean;
+    icon?: string;
+    type?: 'thought' | 'action' | 'observation' | 'error';
+}> = ({ title, content, defaultExpanded = false, icon, type = 'thought' }) => {
+    const [isExpanded, setIsExpanded] = React.useState(defaultExpanded);
+
+    const getHeaderColor = () => {
+        switch (type) {
+            case 'error': return 'text-red-600';
+            case 'action': return 'text-purple-600';
+            case 'observation': return 'text-green-600';
+            default: return 'text-gray-500';
+        }
+    };
+
+    return (
+        <div className="text-sm">
+            <button
+                onClick={() => setIsExpanded(!isExpanded)}
+                className={`w-full text-left py-1 flex items-center gap-2 hover:bg-gray-50 rounded select-none ${getHeaderColor()}`}
+            >
+                <span className="text-[10px] w-4">{isExpanded ? '▼' : '▶'}</span>
+                {icon && <span>{icon}</span>}
+                <span className="font-medium">{title}</span>
+            </button>
+            {isExpanded && (
+                <div className="pl-6 py-2 overflow-x-auto">
+                    {content}
+                </div>
+            )}
+        </div>
+    );
+};
+
 const ExecutionSteps: React.FC<{ steps: ExecutionStep[] }> = ({ steps }) => {
     if (!steps || steps.length === 0) return null;
 
-    const [isExpanded, setIsExpanded] = React.useState(true);
-
     return (
-        <div className="mt-3 border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
-            <button
-                onClick={() => setIsExpanded(!isExpanded)}
-                className="w-full px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-100 flex items-center justify-between"
-            >
-                <span>📋 Execution Steps ({steps.length})</span>
-                <span>{isExpanded ? '▼' : '▶'}</span>
-            </button>
-            {isExpanded && (
-                <div className="p-3 space-y-3">
-                    {steps.map((step, idx) => {
-                        const hasError = !!step.observation?.error;
-                        const hasAction = !!step.action;
-                        const isThinkingOnly = !hasAction;
+        <div className="mt-2 space-y-1">
+            {steps.map((step, idx) => {
+                const stepItems = [];
 
-                        return (
-                            <div
-                                key={idx}
-                                className={`border rounded p-2 ${
-                                    hasError ? 'bg-red-50 border-red-200' :
-                                    isThinkingOnly ? 'bg-blue-50 border-blue-200' :
-                                    'bg-white border-gray-200'
-                                }`}
-                            >
-                                <div className="text-xs font-medium mb-1 flex items-center justify-between">
-                                    <span className="text-gray-500">Step {step.stepNumber}</span>
-                                    {hasError && (
-                                        <span className="text-red-600 font-semibold text-xs">FAILED</span>
-                                    )}
-                                    {isThinkingOnly && (
-                                        <span className="text-blue-600 font-semibold text-xs">REASONING</span>
-                                    )}
-                                    {!hasError && hasAction && (
-                                        <span className="text-green-600 font-semibold text-xs">SUCCESS</span>
+                // Thinking / Planning / Reflection - Map to Thought
+                if (['Thinking', 'Planning', 'Reflection'].includes(step.step_type)) {
+                    stepItems.push(
+                        <CollapsibleStepItem
+                            key={`thought-${idx}`}
+                            type="thought"
+                            icon="💭"
+                            title={`Step ${step.step_number}: ${step.step_type}`}
+                            content={<div className="text-gray-700 whitespace-pre-wrap">{step.content}</div>}
+                        />
+                    );
+                }
+
+                // Action - Map to Action
+                if (step.step_type === 'Action' && step.tool_call) {
+                    stepItems.push(
+                        <CollapsibleStepItem
+                            key={`action-${idx}`}
+                            type="action"
+                            icon="⚡"
+                            title={`Step ${step.step_number}: Action - ${step.tool_call.tool_name}`}
+                            content={
+                                <div className="space-y-2">
+                                    <div className="text-sm text-gray-700">{step.content}</div>
+                                    <div className="font-mono text-xs text-purple-800 bg-purple-50 p-2 rounded">
+                                        {step.tool_call.tool_name}
+                                    </div>
+                                    {step.tool_call.arguments && (
+                                        <pre className="text-xs text-gray-600 bg-gray-50 p-2 rounded font-mono">
+                                            {JSON.stringify(step.tool_call.arguments, null, 2)}
+                                        </pre>
                                     )}
                                 </div>
+                            }
+                        />
+                    );
+                }
 
-                                <div className="mb-2">
-                                    <div className="text-xs font-medium text-gray-700 mb-1">💭 Thought</div>
-                                    <div className="text-xs text-gray-800 bg-blue-50 p-1.5 rounded">
-                                        {step.thought}
+                // Observation - Map to Observation
+                if (step.step_type === 'Observation' && step.tool_observation) {
+                    const hasError = !step.tool_observation.success;
+                    stepItems.push(
+                        <CollapsibleStepItem
+                            key={`observation-${idx}`}
+                            type={hasError ? 'error' : 'observation'}
+                            icon={hasError ? '❌' : '✅'}
+                            title={`Step ${step.step_number}: ${hasError ? 'Error' : 'Observation'}`}
+                            content={
+                                <div className="space-y-2">
+                                    <div className="text-sm text-gray-700">{step.content}</div>
+                                    <div className={`text-xs font-mono p-2 rounded ${hasError
+                                        ? 'bg-red-50 text-red-800 border border-red-100'
+                                        : 'bg-green-50 text-green-900 border border-green-100'
+                                        }`}>
+                                        {hasError ? (
+                                            <>
+                                                <div className="font-bold mb-1">Error:</div>
+                                                <div>{step.tool_observation.error}</div>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <div>{step.tool_observation.message}</div>
+                                                {step.tool_observation.data && (
+                                                    <div className="mt-2 pt-1 border-t border-green-200">
+                                                        <pre className="overflow-x-auto">
+                                                            {JSON.stringify(step.tool_observation.data, null, 2)}
+                                                        </pre>
+                                                    </div>
+                                                )}
+                                            </>
+                                        )}
                                     </div>
                                 </div>
+                            }
+                        />
+                    );
+                }
 
-                                {step.action && (
-                                    <div className="mb-2">
-                                        <div className="text-xs font-medium text-gray-700 mb-1">
-                                            {step.observation?.error ? '⚠️ Attempted Action' : '⚡ Action'}
-                                        </div>
-                                        <div
-                                            className={`border rounded p-1.5 text-xs ${
-                                                step.observation?.error
-                                                    ? 'bg-orange-50 border-orange-200'
-                                                    : 'bg-purple-50 border-purple-200'
-                                            }`}
-                                        >
-                                            <div className={`font-mono ${step.observation?.error ? 'text-orange-900' : 'text-purple-900'}`}>
-                                                {step.action.tool}
-                                            </div>
-                                            {step.action.parameters && (
-                                                <pre className="text-xs text-gray-600 mt-1 overflow-x-auto">
-                                                    {JSON.stringify(step.action.parameters, null, 2)}
-                                                </pre>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
+                // Fallback for other types or partial data
+                if (stepItems.length === 0) {
+                    stepItems.push(
+                        <CollapsibleStepItem
+                            key={`generic-${idx}`}
+                            title={`Step ${step.step_number}: ${step.step_type}`}
+                            content={<div className="text-gray-700 whitespace-pre-wrap">{step.content}</div>}
+                        />
+                    );
+                }
 
-                                {step.observation && (
-                                    <div>
-                                        <div className="text-xs font-medium text-gray-700 mb-1">
-                                            {step.observation.error ? '❌ Error' : '✅ Observation'}
-                                        </div>
-                                        <div
-                                            className={`text-xs whitespace-pre-wrap p-1.5 rounded ${
-                                                step.observation.error
-                                                    ? 'bg-red-50 border border-red-200 text-red-800'
-                                                    : 'bg-green-50 border border-green-200 text-gray-700'
-                                            }`}
-                                        >
-                                            {step.observation.error ? (
-                                                <div>
-                                                    <div className="font-semibold mb-1">Error:</div>
-                                                    <div className="text-xs">{step.observation.error}</div>
-                                                    {step.observation.result && (
-                                                        <div className="mt-2 pt-1 border-t border-red-300">
-                                                            <div className="font-semibold mb-1">Partial Result:</div>
-                                                            <pre className="text-xs overflow-x-auto">
-                                                                {typeof step.observation.result === 'string'
-                                                                    ? step.observation.result
-                                                                    : JSON.stringify(step.observation.result, null, 2)}
-                                                            </pre>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            ) : (
-                                                <div>
-                                                    {typeof step.observation.result === 'string'
-                                                        ? step.observation.result
-                                                        : JSON.stringify(step.observation.result, null, 2)}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
+                return <React.Fragment key={idx}>{stepItems}</React.Fragment>;
+            })}
         </div>
     );
 };
@@ -209,33 +229,46 @@ export const ChatInterfaceV3: React.FC = () => {
                     handlePromptMessage(data);
                 } else if (data.type === 'execution_step') {
                     console.log('[Chat] Received execution step:', data.step);
+                    const currentIndex = currentAssistantIndex.current;
                     // Add step to current assistant message
-                    if (currentAssistantIndex.current !== null) {
+                    if (currentIndex !== null) {
                         setConversationHistory((prev) => {
                             const updated = [...prev];
-                            const currentMsg = updated[currentAssistantIndex.current!];
-                            updated[currentAssistantIndex.current!] = {
-                                ...currentMsg,
-                                executionSteps: [...(currentMsg.executionSteps || []), data.step],
-                            };
+                            // Check if message exists at index
+                            if (updated[currentIndex]) {
+                                const currentMsg = updated[currentIndex];
+                                updated[currentIndex] = {
+                                    ...currentMsg,
+                                    executionSteps: [...(currentMsg.executionSteps || []), data.step],
+                                };
+                            }
                             return updated;
                         });
                     }
                 } else if (data.type === 'chat_response') {
                     console.log('[Chat] Received response:', data);
+                    const currentIndex = currentAssistantIndex.current;
+                    console.log('[Chat] Current assistant index:', currentIndex);
 
                     // Update current assistant message with final response
-                    if (currentAssistantIndex.current !== null) {
+                    if (currentIndex !== null) {
                         setConversationHistory((prev) => {
                             const updated = [...prev];
-                            const currentMsg = updated[currentAssistantIndex.current!];
-                            updated[currentAssistantIndex.current!] = {
-                                ...currentMsg,
-                                content: data.content,
-                                isStreaming: false,
-                            };
+                            console.log('[Chat] Updating message at index:', currentIndex);
+                            if (updated[currentIndex]) {
+                                const currentMsg = updated[currentIndex];
+                                updated[currentIndex] = {
+                                    ...currentMsg,
+                                    content: data.content,
+                                    isStreaming: false,
+                                };
+                            } else {
+                                console.error('[Chat] Message not found at index:', currentIndex);
+                            }
                             return updated;
                         });
+                    } else {
+                        console.warn('[Chat] No active assistant message to update');
                     }
 
                     setIsWaitingForResponse(false);
@@ -325,16 +358,14 @@ export const ChatInterfaceV3: React.FC = () => {
                 {conversationHistory.map((msg, index) => (
                     <div
                         key={index}
-                        className={`flex ${
-                            msg.role === 'user' ? 'justify-end' : 'justify-start'
-                        }`}
+                        className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'
+                            }`}
                     >
                         <div
-                            className={`max-w-2xl rounded-lg px-4 py-3 ${
-                                msg.role === 'user'
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-white text-gray-900 border border-gray-200'
-                            }`}
+                            className={`max-w-2xl rounded-lg px-4 py-3 ${msg.role === 'user'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-white text-gray-900 border border-gray-200'
+                                }`}
                         >
                             {msg.role === 'assistant' && msg.executionSteps && (
                                 <ExecutionSteps steps={msg.executionSteps} />
@@ -367,8 +398,8 @@ export const ChatInterfaceV3: React.FC = () => {
                             !currentAgent
                                 ? 'Select an agent first...'
                                 : !connected
-                                ? 'Connecting...'
-                                : 'Type your message (Enter to send, Shift+Enter for new line)'
+                                    ? 'Connecting...'
+                                    : 'Type your message (Enter to send, Shift+Enter for new line)'
                         }
                         disabled={!currentAgent || !connected || isWaitingForResponse}
                         className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed resize-none"

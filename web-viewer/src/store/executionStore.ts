@@ -5,19 +5,24 @@
 import { create } from 'zustand';
 
 export interface ExecutionStep {
-  stepNumber: number;
-  thought: string;
-  action?: {
-    tool: string;
-    parameters: Record<string, any>;
+  step_number: number;
+  step_type: 'Thinking' | 'Planning' | 'Action' | 'Observation' | 'Reflection' | 'Completion';
+  content: string;
+  tool_call?: {
+    tool_name: string;
+    arguments: any;
+    execution_time: {
+      secs: number;
+      nanos: number;
+    } | number;
   };
-  observation?: {
-    result: any;
+  tool_observation?: {
+    success: boolean;
+    message: string;
+    data?: any;
     error?: string;
   };
-  // Track which agent created this step (for delegation scenarios)
-  agentId?: string;
-  agentName?: string;
+  timestamp: string;
 }
 
 interface ExecutionLog {
@@ -88,8 +93,10 @@ export const useExecutionStore = create<ExecutionState>((set, get) => ({
     } else {
       // Create a new iteration if none exists
       iterations.push({
-        stepNumber: 1,
-        thought: '',
+        step_number: 1,
+        step_type: 'Thinking',
+        content: '',
+        timestamp: new Date().toISOString(),
         ...stepUpdate,
       } as ExecutionStep);
     }
@@ -98,7 +105,7 @@ export const useExecutionStore = create<ExecutionState>((set, get) => ({
       currentExecution: {
         ...currentExecution,
         iterations,
-        toolCallsCount: iterations.filter(i => i.action).length,
+        toolCallsCount: iterations.filter(i => !!i.tool_call).length,
       },
     });
   },
