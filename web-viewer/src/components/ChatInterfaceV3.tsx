@@ -60,45 +60,81 @@ const CollapsibleStepItem: React.FC<{
     );
 };
 
+// Helper to normalize steps - some come with JSON-encoded content that needs parsing
+const normalizeStep = (step: ExecutionStep): ExecutionStep => {
+    // Check if content looks like a JSON-encoded step
+    if (step.content && step.content.startsWith('{') && step.content.includes('"step_type"')) {
+        try {
+            const parsed = JSON.parse(step.content);
+            // Return the parsed step data
+            return {
+                step_number: parsed.step_number ?? step.step_number,
+                step_type: parsed.step_type ?? step.step_type,
+                content: parsed.content ?? '',
+                tool_call: parsed.tool_call ?? step.tool_call,
+                tool_observation: parsed.tool_observation ?? step.tool_observation,
+                timestamp: parsed.timestamp ?? step.timestamp,
+            };
+        } catch {
+            // Not valid JSON, return as-is
+            return step;
+        }
+    }
+    return step;
+};
+
 const ExecutionSteps: React.FC<{ steps: ExecutionStep[] }> = ({ steps }) => {
     if (!steps || steps.length === 0) return null;
 
+    // Normalize steps and dedupe by step_number + step_type
+    const normalizedSteps = steps.map(normalizeStep);
+    const uniqueSteps = normalizedSteps.filter((step, idx, arr) => {
+        // Keep if this is the first occurrence of this step_number + step_type combo
+        return arr.findIndex(s => s.step_number === step.step_number && s.step_type === step.step_type) === idx;
+    });
+
     return (
         <div className="mt-2 space-y-1">
-            {steps.map((step, idx) => {
-                const stepItems = [];
+            {uniqueSteps.map((step, idx) => {
+                const stepType = step.step_type;
+                const stepNum = step.step_number;
 
-                // Thinking / Planning / Reflection - Map to Thought
-                if (['Thinking', 'Planning', 'Reflection'].includes(step.step_type)) {
-                    stepItems.push(
+                // Thinking / Planning / Reflection
+                if (['Thinking', 'Planning', 'Reflection'].includes(stepType)) {
+                    return (
                         <CollapsibleStepItem
-                            key={`thought-${idx}`}
+                            key={`${stepType}-${stepNum}`}
                             type="thought"
-                            icon="💭"
-                            title={`Step ${step.step_number}: ${step.step_type}`}
+                            icon={stepType === 'Planning' ? '📋' : stepType === 'Reflection' ? '🔍' : '💭'}
+                            title={`Step ${stepNum}: ${stepType}`}
                             content={<div className="text-gray-700 whitespace-pre-wrap">{step.content}</div>}
                         />
                     );
                 }
 
-                // Action - Map to Action
-                if (step.step_type === 'Action' && step.tool_call) {
-                    stepItems.push(
+                // Action
+                if (stepType === 'Action') {
+                    const toolName = step.tool_call?.tool_name || 'Unknown Tool';
+                    return (
                         <CollapsibleStepItem
-                            key={`action-${idx}`}
+                            key={`action-${stepNum}`}
                             type="action"
                             icon="⚡"
-                            title={`Step ${step.step_number}: Action - ${step.tool_call.tool_name}`}
+                            title={`Step ${stepNum}: Action - ${toolName}`}
                             content={
                                 <div className="space-y-2">
                                     <div className="text-sm text-gray-700">{step.content}</div>
-                                    <div className="font-mono text-xs text-purple-800 bg-purple-50 p-2 rounded">
-                                        {step.tool_call.tool_name}
-                                    </div>
-                                    {step.tool_call.arguments && (
-                                        <pre className="text-xs text-gray-600 bg-gray-50 p-2 rounded font-mono">
-                                            {JSON.stringify(step.tool_call.arguments, null, 2)}
-                                        </pre>
+                                    {step.tool_call && (
+                                        <>
+                                            <div className="font-mono text-xs text-purple-800 bg-purple-50 p-2 rounded">
+                                                {step.tool_call.tool_name}
+                                            </div>
+                                            {step.tool_call.arguments && (
+                                                <pre className="text-xs text-gray-600 bg-gray-50 p-2 rounded font-mono">
+                                                    {JSON.stringify(step.tool_call.arguments, null, 2)}
+                                                </pre>
+                                            )}
+                                        </>
                                     )}
                                 </div>
                             }
@@ -106,58 +142,56 @@ const ExecutionSteps: React.FC<{ steps: ExecutionStep[] }> = ({ steps }) => {
                     );
                 }
 
-                // Observation - Map to Observation
-                if (step.step_type === 'Observation' && step.tool_observation) {
-                    const hasError = !step.tool_observation.success;
-                    stepItems.push(
+                // Observation
+                if (stepType === 'Observation') {
+                    const hasError = step.tool_observation ? !step.tool_observation.success : false;
+                    return (
                         <CollapsibleStepItem
-                            key={`observation-${idx}`}
+                            key={`obs-${stepNum}`}
                             type={hasError ? 'error' : 'observation'}
                             icon={hasError ? '❌' : '✅'}
-                            title={`Step ${step.step_number}: ${hasError ? 'Error' : 'Observation'}`}
+                            title={`Step ${stepNum}: ${hasError ? 'Error' : 'Observation'}`}
                             content={
                                 <div className="space-y-2">
                                     <div className="text-sm text-gray-700">{step.content}</div>
-                                    <div className={`text-xs font-mono p-2 rounded ${hasError
-                                        ? 'bg-red-50 text-red-800 border border-red-100'
-                                        : 'bg-green-50 text-green-900 border border-green-100'
-                                        }`}>
-                                        {hasError ? (
-                                            <>
-                                                <div className="font-bold mb-1">Error:</div>
-                                                <div>{step.tool_observation.error}</div>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <div>{step.tool_observation.message}</div>
-                                                {step.tool_observation.data && (
-                                                    <div className="mt-2 pt-1 border-t border-green-200">
-                                                        <pre className="overflow-x-auto">
-                                                            {JSON.stringify(step.tool_observation.data, null, 2)}
-                                                        </pre>
-                                                    </div>
-                                                )}
-                                            </>
-                                        )}
-                                    </div>
+                                    {step.tool_observation && (
+                                        <div className={`text-xs font-mono p-2 rounded ${hasError
+                                            ? 'bg-red-50 text-red-800 border border-red-100'
+                                            : 'bg-green-50 text-green-900 border border-green-100'
+                                            }`}>
+                                            {hasError ? (
+                                                <>
+                                                    <div className="font-bold mb-1">Error:</div>
+                                                    <div>{step.tool_observation.error}</div>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <div>{step.tool_observation.message}</div>
+                                                    {step.tool_observation.data && (
+                                                        <div className="mt-2 pt-1 border-t border-green-200">
+                                                            <pre className="overflow-x-auto">
+                                                                {JSON.stringify(step.tool_observation.data, null, 2)}
+                                                            </pre>
+                                                        </div>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             }
                         />
                     );
                 }
 
-                // Fallback for other types or partial data
-                if (stepItems.length === 0) {
-                    stepItems.push(
-                        <CollapsibleStepItem
-                            key={`generic-${idx}`}
-                            title={`Step ${step.step_number}: ${step.step_type}`}
-                            content={<div className="text-gray-700 whitespace-pre-wrap">{step.content}</div>}
-                        />
-                    );
-                }
-
-                return <React.Fragment key={idx}>{stepItems}</React.Fragment>;
+                // Fallback for other types
+                return (
+                    <CollapsibleStepItem
+                        key={`${stepType}-${stepNum}`}
+                        title={`Step ${stepNum}: ${stepType}`}
+                        content={<div className="text-gray-700 whitespace-pre-wrap">{step.content}</div>}
+                    />
+                );
             })}
         </div>
     );

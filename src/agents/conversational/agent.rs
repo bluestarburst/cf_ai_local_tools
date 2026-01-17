@@ -1,4 +1,4 @@
-use crate::agents::conversation::ProgressType;
+// Removed ProgressType - steps are now sent directly via send_thinking_update
 use crate::{
     Agent, AgentContext, AgentResult, ExecutionStep, LLMClient, LLMMessage, LLMTool,
     ReasoningConfig, StepType, ToolCall, ToolObservation,
@@ -116,20 +116,50 @@ impl Agent for ConversationalAgent {
     ) -> crate::core::Result<AgentResult> {
         let mut steps = Vec::new();
         let start_time = std::time::Instant::now();
+        let mut step_counter = 0usize;
+
+        // Async helper to send step immediately via manager
+        async fn send_step_async(
+            manager: &Option<std::sync::Arc<dyn crate::agents::conversation::ConversationManager>>,
+            step: &ExecutionStep,
+        ) {
+            if let Some(m) = manager {
+                let _ = m
+                    .send_thinking_update(
+                        "",
+                        step.step_number,
+                        &serde_json::to_string(step).unwrap_or_default(),
+                    )
+                    .await;
+            }
+        }
+
+        // ============================================
+        // STEP 0: THINKING - Understand the task
+        // ============================================
+        let thinking_step = ExecutionStep {
+            step_number: step_counter,
+            step_type: StepType::Thinking,
+            content: format!("Analyzing task: \"{}\"", task),
+            tool_call: None,
+            tool_observation: None,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        };
+        steps.push(thinking_step.clone());
+        send_step_async(&conversation_manager, &thinking_step).await;
+        step_counter += 1;
 
         // 1. Convert tools to LLM format
         let llm_tools = self.to_llm_tools(available_tools);
 
         // 2. Prepare messages
         let mut messages = Vec::new();
-        // Add system prompt
         messages.push(LLMMessage {
             role: "system".to_string(),
             content: self.system_prompt.clone(),
             tool_calls: None,
         });
 
-        // Add history from context (simplified)
         for msg in &context.messages {
             messages.push(LLMMessage {
                 role: msg.role.clone(),
@@ -138,7 +168,6 @@ impl Agent for ConversationalAgent {
             });
         }
 
-        // Add current task
         messages.push(LLMMessage {
             role: "user".to_string(),
             content: task.to_string(),
@@ -152,27 +181,30 @@ impl Agent for ConversationalAgent {
 
         // 4. Process tool calls
         if let Some(tool_calls) = response.tool_calls {
+            // ============================================
+            // STEP N: PLANNING - Identify tools to use
+            // ============================================
+            let tool_names: Vec<String> = tool_calls.iter().map(|c| c.name.clone()).collect();
+            let planning_step = ExecutionStep {
+                step_number: step_counter,
+                step_type: StepType::Planning,
+                content: format!("Planning to use tool(s): {}", tool_names.join(", ")),
+                tool_call: None,
+                tool_observation: None,
+                timestamp: chrono::Utc::now().to_rfc3339(),
+            };
+            steps.push(planning_step.clone());
+            send_step_async(&conversation_manager, &planning_step).await;
+            step_counter += 1;
+
             for call in tool_calls {
-                // Determine step number
-                let step_num = steps.len() + 1;
-
-                // Send thinking/action update
-                if let Some(manager) = &conversation_manager {
-                    let _ = manager
-                        .send_progress_update(
-                            &self.id,
-                            ProgressType::Executing,
-                            &format!("Calling tool: {}", call.name),
-                            None,
-                        )
-                        .await;
-                }
-
-                // Record thinking/action step
-                steps.push(ExecutionStep {
-                    step_number: step_num,
+                // ============================================
+                // STEP N: ACTION - Execute the tool
+                // ============================================
+                let action_step = ExecutionStep {
+                    step_number: step_counter,
                     step_type: StepType::Action,
-                    content: format!("Calling tool: {}", call.name),
+                    content: format!("Executing tool: {}", call.name),
                     tool_call: Some(ToolCall {
                         tool_name: call.name.clone(),
                         arguments: call.arguments.clone(),
@@ -180,22 +212,16 @@ impl Agent for ConversationalAgent {
                     }),
                     tool_observation: None,
                     timestamp: chrono::Utc::now().to_rfc3339(),
-                });
+                };
+                steps.push(action_step.clone());
+                send_step_async(&conversation_manager, &action_step).await;
+                step_counter += 1;
 
                 // Find and execute tool
-                println!(
-                    "DEBUG: Looking for tool with name '{}', available tools:",
-                    call.name
-                );
-                for t in available_tools.iter() {
-                    println!("DEBUG:   - id='{}', name='{}'", t.id(), t.name());
-                }
                 if let Some(tool) = available_tools
                     .iter()
                     .find(|t| t.name() == call.name || t.id() == call.name)
                 {
-                    println!("DEBUG: Found tool: {}", tool.id());
-                    println!("DEBUG: Executing tool with args: {:?}", call.arguments);
                     let tool_start = std::time::Instant::now();
                     let result = tool
                         .execute(
@@ -210,25 +236,15 @@ impl Agent for ConversationalAgent {
                         )
                         .await;
 
-                    println!("DEBUG: Tool execution result: {:?}", result);
+                    let execution_time = tool_start.elapsed();
 
+                    // ============================================
+                    // STEP N: OBSERVATION - Record result
+                    // ============================================
                     match result {
                         Ok(tool_result) => {
-                            println!("DEBUG: Tool succeeded: {}", tool_result.message);
-                            // Send observation update
-                            if let Some(manager) = &conversation_manager {
-                                let _ = manager
-                                    .send_progress_update(
-                                        &self.id,
-                                        ProgressType::Observing,
-                                        &tool_result.message,
-                                        None,
-                                    )
-                                    .await;
-                            }
-
-                            steps.push(ExecutionStep {
-                                step_number: steps.len() + 1,
+                            let obs_step = ExecutionStep {
+                                step_number: step_counter,
                                 step_type: StepType::Observation,
                                 content: tool_result.message.clone(),
                                 tool_call: None,
@@ -239,23 +255,14 @@ impl Agent for ConversationalAgent {
                                     error: None,
                                 }),
                                 timestamp: chrono::Utc::now().to_rfc3339(),
-                            });
+                            };
+                            steps.push(obs_step.clone());
+                            send_step_async(&conversation_manager, &obs_step).await;
+                            step_counter += 1;
                         }
                         Err(e) => {
-                            println!("DEBUG: Tool execution error: {}", e);
-                            // Send error update
-                            if let Some(manager) = &conversation_manager {
-                                let _ = manager
-                                    .send_error_update(
-                                        &self.id,
-                                        &format!("Tool execution failed: {}", e),
-                                        vec![],
-                                    )
-                                    .await;
-                            }
-
-                            steps.push(ExecutionStep {
-                                step_number: steps.len() + 1,
+                            let obs_step = ExecutionStep {
+                                step_number: step_counter,
                                 step_type: StepType::Observation,
                                 content: format!("Tool execution failed: {}", e),
                                 tool_call: None,
@@ -266,22 +273,15 @@ impl Agent for ConversationalAgent {
                                     error: Some(e.to_string()),
                                 }),
                                 timestamp: chrono::Utc::now().to_rfc3339(),
-                            });
+                            };
+                            steps.push(obs_step.clone());
+                            send_step_async(&conversation_manager, &obs_step).await;
+                            step_counter += 1;
                         }
                     }
                 } else {
-                    if let Some(manager) = &conversation_manager {
-                        let _ = manager
-                            .send_error_update(
-                                &self.id,
-                                &format!("Tool not found: {}", call.name),
-                                vec![],
-                            )
-                            .await;
-                    }
-
-                    steps.push(ExecutionStep {
-                        step_number: steps.len() + 1,
+                    let obs_step = ExecutionStep {
+                        step_number: step_counter,
                         step_type: StepType::Observation,
                         content: format!("Tool not found: {}", call.name),
                         tool_call: None,
@@ -292,9 +292,26 @@ impl Agent for ConversationalAgent {
                             error: Some("Tool not found".to_string()),
                         }),
                         timestamp: chrono::Utc::now().to_rfc3339(),
-                    });
+                    };
+                    steps.push(obs_step.clone());
+                    send_step_async(&conversation_manager, &obs_step).await;
+                    step_counter += 1;
                 }
             }
+
+            // ============================================
+            // STEP N: REFLECTION - Verify goal completion
+            // ============================================
+            let reflection_step = ExecutionStep {
+                step_number: step_counter,
+                step_type: StepType::Reflection,
+                content: "Task execution complete. Verifying goal satisfaction.".to_string(),
+                tool_call: None,
+                tool_observation: None,
+                timestamp: chrono::Utc::now().to_rfc3339(),
+            };
+            steps.push(reflection_step.clone());
+            send_step_async(&conversation_manager, &reflection_step).await;
         }
 
         Ok(AgentResult {

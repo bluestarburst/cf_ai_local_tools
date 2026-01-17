@@ -144,12 +144,8 @@ impl WebSocketRelayClient {
                     .execute(&message, &context, llm.as_ref(), Some(manager), &tools)
                     .await?;
 
-                // Send steps
-                for step in result.steps {
-                    let _ = tx.send(OutgoingMessage::ExecutionStep { step });
-                }
-
-                // Send final response
+                // Steps are already sent incrementally by the agent via send_thinking_update
+                // Send final response only
                 let _ = tx.send(OutgoingMessage::ChatResponse {
                     content: result.response,
                 });
