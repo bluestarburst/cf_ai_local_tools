@@ -2,8 +2,7 @@
 ///
 /// Basic Reasoning + Acting loop with tool usage.
 /// Implements the core ReAct pattern for efficient tool execution.
-
-use crate::agents::presets::{SystemPromptPreset, Metadata};
+use crate::agents::presets::{Metadata, SystemPromptPreset};
 
 const TEMPLATE: &str = r#"You are an AI agent that can use tools to complete tasks.
 

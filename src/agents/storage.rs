@@ -20,6 +20,10 @@ pub struct Agent {
     pub max_iterations: usize,
     #[serde(rename = "isLocked")]
     pub is_locked: bool,
+    #[serde(rename = "separateReasoningModel", default)]
+    pub separate_reasoning_model: bool,
+    #[serde(rename = "reasoningModelId", default)]
+    pub reasoning_model_id: Option<String>,
     #[serde(rename = "createdAt")]
     pub created_at: String,
     #[serde(rename = "updatedAt")]
@@ -39,8 +43,7 @@ impl AgentStorage {
 
         // Ensure directory exists
         if let Some(parent) = storage_path.parent() {
-            fs::create_dir_all(parent)
-                .context("Failed to create storage directory")?;
+            fs::create_dir_all(parent).context("Failed to create storage directory")?;
         }
 
         let mut storage = Self {
@@ -61,8 +64,7 @@ impl AgentStorage {
 
     /// Get the storage file path
     fn get_storage_path() -> Result<PathBuf> {
-        let home_dir = dirs::home_dir()
-            .context("Could not determine home directory")?;
+        let home_dir = dirs::home_dir().context("Could not determine home directory")?;
 
         Ok(home_dir
             .join(".config")
@@ -72,11 +74,10 @@ impl AgentStorage {
 
     /// Load agents from disk
     fn load(&mut self) -> Result<()> {
-        let contents = fs::read_to_string(&self.storage_path)
-            .context("Failed to read agents file")?;
+        let contents =
+            fs::read_to_string(&self.storage_path).context("Failed to read agents file")?;
 
-        self.agents = serde_json::from_str(&contents)
-            .context("Failed to parse agents JSON")?;
+        self.agents = serde_json::from_str(&contents).context("Failed to parse agents JSON")?;
 
         info!("[AgentStorage] Loaded {} agents", self.agents.len());
         Ok(())
@@ -84,11 +85,10 @@ impl AgentStorage {
 
     /// Save agents to disk
     fn save(&self) -> Result<()> {
-        let json = serde_json::to_string_pretty(&self.agents)
-            .context("Failed to serialize agents")?;
+        let json =
+            serde_json::to_string_pretty(&self.agents).context("Failed to serialize agents")?;
 
-        fs::write(&self.storage_path, json)
-            .context("Failed to write agents file")?;
+        fs::write(&self.storage_path, json).context("Failed to write agents file")?;
 
         info!("[AgentStorage] Saved {} agents", self.agents.len());
         Ok(())
@@ -119,7 +119,9 @@ impl AgentStorage {
 
     /// Update an existing agent
     pub fn update(&mut self, id: &str, agent: Agent) -> Result<Agent> {
-        let existing = self.agents.get(id)
+        let existing = self
+            .agents
+            .get(id)
             .context(format!("Agent '{}' not found", id))?;
 
         if existing.is_locked {
@@ -135,7 +137,9 @@ impl AgentStorage {
 
     /// Delete an agent
     pub fn delete(&mut self, id: &str) -> Result<()> {
-        let existing = self.agents.get(id)
+        let existing = self
+            .agents
+            .get(id)
             .context(format!("Agent '{}' not found", id))?;
 
         if existing.is_locked {
@@ -216,6 +220,8 @@ Always be precise with coordinates and timing."#.to_string(),
             model_id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast".to_string(),
             max_iterations: 5,
             is_locked: true,
+            separate_reasoning_model: false,
+            reasoning_model_id: None,
             created_at: now.clone(),
             updated_at: now.clone(),
         };
@@ -246,6 +252,8 @@ Always cite your sources and be accurate."#.to_string(),
             model_id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast".to_string(),
             max_iterations: 5,
             is_locked: true,
+            separate_reasoning_model: false,
+            reasoning_model_id: None,
             created_at: now.clone(),
             updated_at: now.clone(),
         };
@@ -283,10 +291,12 @@ Be helpful, accurate, and efficient."#.to_string(),
                 "fetch_url".to_string(),
             ],
             model_id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast".to_string(),
-            max_iterations: 8,
+            max_iterations: 5,
             is_locked: true,
+            separate_reasoning_model: false,
+            reasoning_model_id: None,
             created_at: now.clone(),
-            updated_at: now,
+            updated_at: now.clone(),
         };
         agents.insert(general_agent.id.clone(), general_agent);
 
@@ -310,6 +320,8 @@ mod tests {
             model_id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast".to_string(),
             max_iterations: 5,
             is_locked: false,
+            separate_reasoning_model: false,
+            reasoning_model_id: None,
             created_at: chrono::Utc::now().to_rfc3339(),
             updated_at: chrono::Utc::now().to_rfc3339(),
         };

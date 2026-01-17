@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::tools::computer_automation::{AutomationHandler, execute_automation_tool};
+    use crate::tools::computer_automation::{execute_automation_tool, AutomationHandler};
     use serde_json::json;
 
     #[test]
@@ -21,7 +21,11 @@ mod tests {
             &handler,
         );
 
-        assert!(result.is_ok(), "mouse_move should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "mouse_move should succeed: {:?}",
+            result.err()
+        );
         let result_str = result.unwrap();
         assert!(result_str.contains("500") && result_str.contains("600"));
     }
@@ -63,11 +67,7 @@ mod tests {
         let handler = AutomationHandler::new().expect("Failed to create handler");
 
         // Move to first position
-        let result1 = execute_automation_tool(
-            "mouse_move",
-            &json!({"x": 500, "y": 600}),
-            &handler,
-        );
+        let result1 = execute_automation_tool("mouse_move", &json!({"x": 500, "y": 600}), &handler);
         assert!(result1.is_ok());
 
         std::thread::sleep(std::time::Duration::from_millis(1200));
@@ -77,11 +77,7 @@ mod tests {
         assert!(pos1.is_ok());
 
         // Move to second position
-        let result2 = execute_automation_tool(
-            "mouse_move",
-            &json!({"x": 100, "y": 100}),
-            &handler,
-        );
+        let result2 = execute_automation_tool("mouse_move", &json!({"x": 100, "y": 100}), &handler);
         assert!(result2.is_ok());
 
         std::thread::sleep(std::time::Duration::from_millis(1200));
@@ -101,7 +97,10 @@ mod tests {
         let result = execute_automation_tool("invalid_tool", &json!({}), &handler);
 
         assert!(result.is_err(), "Should reject invalid tool name");
-        assert!(result.unwrap_err().to_string().contains("Unknown automation tool"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Unknown automation tool"));
     }
 
     #[test]
@@ -109,11 +108,7 @@ mod tests {
     fn test_mouse_click() {
         let handler = AutomationHandler::new().expect("Failed to create handler");
 
-        let result = execute_automation_tool(
-            "mouse_click",
-            &json!({"button": "left"}),
-            &handler,
-        );
+        let result = execute_automation_tool("mouse_click", &json!({"button": "left"}), &handler);
 
         assert!(result.is_ok(), "mouse_click should succeed");
     }
@@ -123,11 +118,8 @@ mod tests {
     fn test_keyboard_input() {
         let handler = AutomationHandler::new().expect("Failed to create handler");
 
-        let result = execute_automation_tool(
-            "keyboard_input",
-            &json!({"text": "hello world"}),
-            &handler,
-        );
+        let result =
+            execute_automation_tool("keyboard_input", &json!({"text": "hello world"}), &handler);
 
         assert!(result.is_ok(), "keyboard_input should succeed");
     }

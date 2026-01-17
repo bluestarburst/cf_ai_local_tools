@@ -2,8 +2,7 @@
 ///
 /// Pure reasoning-focused prompt with step-by-step thinking.
 /// Optimized for tasks that benefit from breaking down the problem before acting.
-
-use crate::agents::presets::{SystemPromptPreset, Metadata};
+use crate::agents::presets::{Metadata, SystemPromptPreset};
 
 const TEMPLATE: &str = r#"You are a helpful AI assistant that thinks step-by-step before taking action.
 

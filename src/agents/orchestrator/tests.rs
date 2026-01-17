@@ -5,10 +5,10 @@
 // 1. Cloudflare Worker running: cd cf-worker && wrangler dev
 // 2. Desktop App running: cargo run
 
+use crate::agents::presets::Metadata;
+use futures_util::{SinkExt, StreamExt};
 use serde_json::json;
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
-use futures_util::{SinkExt, StreamExt};
-use crate::agents::presets::Metadata;
 
 /// Helper function to create a test orchestrator agent with interpolated prompts
 fn create_test_agent() -> super::super::presets::Agent {
@@ -73,7 +73,8 @@ async fn test_orchestrator_greeting_no_delegation() {
     });
 
     println!("📤 Sending chat request: \"hello\"");
-    write.send(Message::Text(chat_request.to_string()))
+    write
+        .send(Message::Text(chat_request.to_string()))
         .await
         .expect("Failed to send message");
     println!("✅ Request sent\n");
@@ -93,20 +94,36 @@ async fn test_orchestrator_greeting_no_delegation() {
                     Some("execution_step") => {
                         if let Some(step) = parsed.get("step") {
                             let thought = step["thought"].as_str().unwrap_or("(no thought)");
-                            let thought_display = if thought.is_empty() { "(empty)" } else { thought };
-                            println!("   Step #{}: 💭 Thought: \"{}\"", step["stepNumber"], thought_display);
+                            let thought_display = if thought.is_empty() {
+                                "(empty)"
+                            } else {
+                                thought
+                            };
+                            println!(
+                                "   Step #{}: 💭 Thought: \"{}\"",
+                                step["stepNumber"], thought_display
+                            );
                             if let Some(action) = step.get("action") {
                                 println!("   🔧 Action tool: {}", action["tool"]);
-                                println!("   📋 Parameters: {}", action.get("parameters").unwrap_or(&json!({})));
+                                println!(
+                                    "   📋 Parameters: {}",
+                                    action.get("parameters").unwrap_or(&json!({}))
+                                );
                             }
                         }
-                    },
+                    }
                     Some("chat_response") => {
                         println!("   💬 Response: {}", parsed["content"]);
-                    },
+                    }
                     Some("error") => {
-                        println!("   ❌ Error: {}", parsed.get("content").or(parsed.get("error")).unwrap_or(&json!("Unknown error")));
-                    },
+                        println!(
+                            "   ❌ Error: {}",
+                            parsed
+                                .get("content")
+                                .or(parsed.get("error"))
+                                .unwrap_or(&json!("Unknown error"))
+                        );
+                    }
                     _ => {}
                 }
 
@@ -119,7 +136,8 @@ async fn test_orchestrator_greeting_no_delegation() {
                 }
             }
         }
-    }).await;
+    })
+    .await;
 
     if result.is_err() {
         println!("\n❌ Test timed out after 30 seconds");
@@ -134,7 +152,9 @@ async fn test_orchestrator_greeting_no_delegation() {
     println!("   Tool calls made: {}", tool_calls.len());
 
     // Check that NO delegation occurred (for a simple greeting)
-    let has_delegation = tool_calls.iter().any(|(tool, _)| tool == "delegate_to_agent");
+    let has_delegation = tool_calls
+        .iter()
+        .any(|(tool, _)| tool == "delegate_to_agent");
 
     if has_delegation {
         println!("\n⚠️  Warning: Orchestrator delegated a greeting (not ideal but acceptable)");
@@ -144,14 +164,18 @@ async fn test_orchestrator_greeting_no_delegation() {
     }
 
     // Check for a response
-    let final_response = responses.iter()
+    let final_response = responses
+        .iter()
         .find(|r| r["type"] == "chat_response")
         .expect("Should have a chat_response");
 
     let response_content = final_response["content"].as_str().unwrap_or("");
     println!("   Final response: {}", response_content);
 
-    assert!(!response_content.is_empty(), "Should have non-empty response");
+    assert!(
+        !response_content.is_empty(),
+        "Should have non-empty response"
+    );
     println!("\n🎉 Test passed!");
 }
 
@@ -187,7 +211,8 @@ async fn test_orchestrator_delegates_automation_task() {
     });
 
     println!("📤 Sending chat request: \"move the mouse to 500, 600\"");
-    write.send(Message::Text(chat_request.to_string()))
+    write
+        .send(Message::Text(chat_request.to_string()))
         .await
         .expect("Failed to send message");
     println!("✅ Request sent\n");
@@ -207,14 +232,25 @@ async fn test_orchestrator_delegates_automation_task() {
                     Some("execution_step") => {
                         if let Some(step) = parsed.get("step") {
                             let thought = step["thought"].as_str().unwrap_or("(no thought)");
-                            let thought_display = if thought.is_empty() { "(empty)" } else { thought };
-                            println!("   Step #{}: 💭 Thought: \"{}\"", step["stepNumber"], thought_display);
+                            let thought_display = if thought.is_empty() {
+                                "(empty)"
+                            } else {
+                                thought
+                            };
+                            println!(
+                                "   Step #{}: 💭 Thought: \"{}\"",
+                                step["stepNumber"], thought_display
+                            );
                             if let Some(action) = step.get("action") {
                                 println!("   🔧 Action tool: {}", action["tool"]);
-                                println!("   📋 Parameters: {}", action.get("parameters").unwrap_or(&json!({})));
+                                println!(
+                                    "   📋 Parameters: {}",
+                                    action.get("parameters").unwrap_or(&json!({}))
+                                );
                             }
                             if let Some(observation) = step.get("observation") {
-                                let obs_str = observation["result"].as_str()
+                                let obs_str = observation["result"]
+                                    .as_str()
                                     .map(|s| s.to_string())
                                     .unwrap_or_else(|| observation["result"].to_string());
                                 // Truncate long observations
@@ -226,13 +262,19 @@ async fn test_orchestrator_delegates_automation_task() {
                                 println!("   👁️  Observation: {}", display);
                             }
                         }
-                    },
+                    }
                     Some("chat_response") => {
                         println!("   💬 Response: {}", parsed["content"]);
-                    },
+                    }
                     Some("error") => {
-                        println!("   ❌ Error: {}", parsed.get("content").or(parsed.get("error")).unwrap_or(&json!("Unknown error")));
-                    },
+                        println!(
+                            "   ❌ Error: {}",
+                            parsed
+                                .get("content")
+                                .or(parsed.get("error"))
+                                .unwrap_or(&json!("Unknown error"))
+                        );
+                    }
                     _ => {}
                 }
 
@@ -244,7 +286,8 @@ async fn test_orchestrator_delegates_automation_task() {
                 }
             }
         }
-    }).await;
+    })
+    .await;
 
     if result.is_err() {
         println!("\n❌ Test timed out after 60 seconds");
@@ -266,11 +309,10 @@ async fn test_orchestrator_delegates_automation_task() {
     }
 
     // Find delegation to desktop-automation-agent
-    let delegation = tool_calls.iter()
-        .find(|(tool, params)| {
-            tool == "delegate_to_agent" &&
-            params.get("agent_id").and_then(|v| v.as_str()) == Some("desktop-automation-agent")
-        });
+    let delegation = tool_calls.iter().find(|(tool, params)| {
+        tool == "delegate_to_agent"
+            && params.get("agent_id").and_then(|v| v.as_str()) == Some("desktop-automation-agent")
+    });
 
     if let Some((_, params)) = delegation {
         println!("\n✅ Found delegation to desktop-automation-agent!");
@@ -286,7 +328,9 @@ async fn test_orchestrator_delegates_automation_task() {
         println!("\n🎉 Test passed!");
     } else {
         // Check if the orchestrator directly delegated or handled it differently
-        println!("\n⚠️  No explicit delegation found. Checking if task was completed differently...");
+        println!(
+            "\n⚠️  No explicit delegation found. Checking if task was completed differently..."
+        );
 
         // Look for mouse_move being called (maybe orchestrator has different tools enabled)
         let mouse_move = tool_calls.iter().find(|(tool, _)| tool == "mouse_move");
@@ -333,7 +377,8 @@ async fn test_orchestrator_no_infinite_loop() {
     });
 
     println!("📤 Sending chat request: \"help\"");
-    write.send(Message::Text(chat_request.to_string()))
+    write
+        .send(Message::Text(chat_request.to_string()))
         .await
         .expect("Failed to send message");
     println!("✅ Request sent\n");
@@ -353,16 +398,23 @@ async fn test_orchestrator_no_infinite_loop() {
                     Some("execution_step") => {
                         if let Some(step) = parsed.get("step") {
                             let thought = step["thought"].as_str().unwrap_or("(no thought)");
-                            let thought_display = if thought.is_empty() { "(empty)" } else { thought };
-                            println!("   Step #{}: 💭 Thought: \"{}\"", step["stepNumber"], thought_display);
+                            let thought_display = if thought.is_empty() {
+                                "(empty)"
+                            } else {
+                                thought
+                            };
+                            println!(
+                                "   Step #{}: 💭 Thought: \"{}\"",
+                                step["stepNumber"], thought_display
+                            );
                             if let Some(action) = step.get("action") {
                                 println!("   🔧 Action tool: {}", action["tool"]);
                             }
                         }
-                    },
+                    }
                     Some("chat_response") => {
                         println!("   💬 Response: {}", parsed["content"]);
-                    },
+                    }
                     _ => {}
                 }
 
@@ -374,7 +426,8 @@ async fn test_orchestrator_no_infinite_loop() {
                 }
             }
         }
-    }).await;
+    })
+    .await;
 
     if result.is_err() {
         println!("\n❌ Test timed out after 30 seconds");
@@ -386,7 +439,8 @@ async fn test_orchestrator_no_infinite_loop() {
 
     // Count delegation tool calls
     let tool_calls = extract_tool_calls(&responses);
-    let delegation_count = tool_calls.iter()
+    let delegation_count = tool_calls
+        .iter()
         .filter(|(tool, _)| tool == "delegate_to_agent")
         .count();
 
@@ -400,7 +454,8 @@ async fn test_orchestrator_no_infinite_loop() {
     );
 
     // Should have a final response
-    let final_response = responses.iter()
+    let final_response = responses
+        .iter()
         .find(|r| r["type"] == "chat_response")
         .expect("Should have a chat_response");
 
@@ -444,7 +499,8 @@ async fn test_orchestrator_web_research_delegation() {
     });
 
     println!("📤 Sending chat request: \"search for the latest news about AI\"");
-    write.send(Message::Text(chat_request.to_string()))
+    write
+        .send(Message::Text(chat_request.to_string()))
         .await
         .expect("Failed to send message");
     println!("✅ Request sent\n");
@@ -464,14 +520,25 @@ async fn test_orchestrator_web_research_delegation() {
                     Some("execution_step") => {
                         if let Some(step) = parsed.get("step") {
                             let thought = step["thought"].as_str().unwrap_or("(no thought)");
-                            let thought_display = if thought.is_empty() { "(empty)" } else { thought };
-                            println!("   Step #{}: 💭 Thought: \"{}\"", step["stepNumber"], thought_display);
+                            let thought_display = if thought.is_empty() {
+                                "(empty)"
+                            } else {
+                                thought
+                            };
+                            println!(
+                                "   Step #{}: 💭 Thought: \"{}\"",
+                                step["stepNumber"], thought_display
+                            );
                             if let Some(action) = step.get("action") {
                                 println!("   🔧 Action tool: {}", action["tool"]);
-                                println!("   📋 Parameters: {}", action.get("parameters").unwrap_or(&json!({})));
+                                println!(
+                                    "   📋 Parameters: {}",
+                                    action.get("parameters").unwrap_or(&json!({}))
+                                );
                             }
                             if let Some(observation) = step.get("observation") {
-                                let obs_str = observation["result"].as_str()
+                                let obs_str = observation["result"]
+                                    .as_str()
                                     .map(|s| s.to_string())
                                     .unwrap_or_else(|| observation["result"].to_string());
                                 let display = if obs_str.len() > 100 {
@@ -482,10 +549,10 @@ async fn test_orchestrator_web_research_delegation() {
                                 println!("   👁️  Observation: {}", display);
                             }
                         }
-                    },
+                    }
                     Some("chat_response") => {
                         println!("   💬 Response: {}", parsed["content"]);
-                    },
+                    }
                     _ => {}
                 }
 
@@ -497,7 +564,8 @@ async fn test_orchestrator_web_research_delegation() {
                 }
             }
         }
-    }).await;
+    })
+    .await;
 
     if result.is_err() {
         println!("\n❌ Test timed out after 60 seconds");
@@ -516,11 +584,10 @@ async fn test_orchestrator_web_research_delegation() {
     }
 
     // Find delegation to web-research-agent
-    let delegation = tool_calls.iter()
-        .find(|(tool, params)| {
-            tool == "delegate_to_agent" &&
-            params.get("agent_id").and_then(|v| v.as_str()) == Some("web-research-agent")
-        });
+    let delegation = tool_calls.iter().find(|(tool, params)| {
+        tool == "delegate_to_agent"
+            && params.get("agent_id").and_then(|v| v.as_str()) == Some("web-research-agent")
+    });
 
     if let Some((_, params)) = delegation {
         println!("\n✅ Found delegation to web-research-agent!");
@@ -551,17 +618,28 @@ fn test_orchestrator_agent_configuration() {
 
     // Check tools are configured
     let tool_ids: Vec<_> = agent.tools.iter().map(|t| t.tool_id.as_str()).collect();
-    assert!(tool_ids.contains(&"delegate_to_agent"), "Should have delegate_to_agent tool");
+    assert!(
+        tool_ids.contains(&"delegate_to_agent"),
+        "Should have delegate_to_agent tool"
+    );
 
     // Check prompt contains key sections
-    assert!(agent.system_prompt.contains("AVAILABLE AGENTS"),
-            "Prompt should list available agents");
-    assert!(agent.system_prompt.contains("WHEN TO DELEGATE"),
-            "Prompt should have delegation rules");
-    assert!(agent.system_prompt.contains("WHEN TO RESPOND DIRECTLY"),
-            "Prompt should have direct response rules");
-    assert!(agent.system_prompt.contains("desktop-automation-agent"),
-            "Prompt should include desktop-automation-agent");
+    assert!(
+        agent.system_prompt.contains("AVAILABLE AGENTS"),
+        "Prompt should list available agents"
+    );
+    assert!(
+        agent.system_prompt.contains("WHEN TO DELEGATE"),
+        "Prompt should have delegation rules"
+    );
+    assert!(
+        agent.system_prompt.contains("WHEN TO RESPOND DIRECTLY"),
+        "Prompt should have direct response rules"
+    );
+    assert!(
+        agent.system_prompt.contains("desktop-automation-agent"),
+        "Prompt should include desktop-automation-agent"
+    );
 
     println!("✅ Orchestrator configuration is correct");
     println!("   Agent ID: {}", agent.id);

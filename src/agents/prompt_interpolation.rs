@@ -2,7 +2,6 @@
 ///
 /// This module provides utilities for interpolating system prompts with runtime values
 /// like available tools, agents, and agent purposes.
-
 use crate::agents::ToolDefinition;
 use crate::tools;
 
@@ -101,14 +100,22 @@ fn format_agents_for_prompt(agents: &[(String, String)]) -> String {
 /// Returns a list of (agent_id, description) tuples for agents that can be delegated to
 pub fn get_delegatable_agents() -> Vec<(String, String)> {
     vec![
-        ("desktop-automation-agent".to_string(),
-         "Mouse/keyboard control, clicking, typing, GUI automation".to_string()),
-        ("web-research-agent".to_string(),
-         "Browsing, searching, information gathering from the web".to_string()),
-        ("code-assistant-agent".to_string(),
-         "Code analysis, writing, debugging, and programming tasks".to_string()),
-        ("general-assistant".to_string(),
-         "Multi-step tasks requiring multiple tools and coordination".to_string()),
+        (
+            "desktop-automation-agent".to_string(),
+            "Mouse/keyboard control, clicking, typing, GUI automation".to_string(),
+        ),
+        (
+            "web-research-agent".to_string(),
+            "Browsing, searching, information gathering from the web".to_string(),
+        ),
+        (
+            "code-assistant-agent".to_string(),
+            "Code analysis, writing, debugging, and programming tasks".to_string(),
+        ),
+        (
+            "general-assistant".to_string(),
+            "Multi-step tasks requiring multiple tools and coordination".to_string(),
+        ),
     ]
 }
 
@@ -166,7 +173,9 @@ mod tests {
     fn test_delegatable_agents() {
         let agents = get_delegatable_agents();
         assert!(agents.len() >= 3);
-        assert!(agents.iter().any(|(id, _)| id == "desktop-automation-agent"));
+        assert!(agents
+            .iter()
+            .any(|(id, _)| id == "desktop-automation-agent"));
         assert!(agents.iter().any(|(id, _)| id == "web-research-agent"));
         assert!(agents.iter().any(|(id, _)| id == "code-assistant-agent"));
     }

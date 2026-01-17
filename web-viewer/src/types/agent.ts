@@ -72,7 +72,7 @@ export const DEFAULT_AGENTS: Record<string, AgentPreset> = {};
 /**
  * @deprecated Load agents from Rust backend via WebSocket instead
  */
-export function getDefaultAgent(agentId: string): AgentPreset | undefined {
+export function getDefaultAgent(_agentId: string): AgentPreset | undefined {
   console.warn(
     'getDefaultAgent() is deprecated. Load agents from Rust backend via WebSocket.'
   );
@@ -93,7 +93,7 @@ export function getAllDefaultAgents(): AgentPreset[] {
  * @deprecated Load prompts from Rust backend via WebSocket instead
  */
 export function getDefaultPrompt(
-  promptId: string
+  _promptId: string
 ): SystemPromptPreset | undefined {
   console.warn(
     'getDefaultPrompt() is deprecated. Load agents from Rust backend via WebSocket.'

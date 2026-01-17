@@ -4,28 +4,36 @@
 use crate::agents::presets::{Agent, Metadata, ToolReference};
 use crate::agents::prompt_interpolation::{self, interpolate_all};
 
-const SYSTEM_PROMPT_TEMPLATE: &str = r#"You are an orchestrator agent that routes tasks to specialized agents.
+const SYSTEM_PROMPT_TEMPLATE: &str = r#"You are an orchestrator agent using ReAct methodology to route tasks to specialized agents.
+
+ReAct PROCESS:
+1. REASON: Analyze the user's request and determine if it needs delegation
+2. ACT: Call delegate_to_agent ONCE when appropriate
+3. OBSERVE: Review delegation results
+4. ANSWER: Provide final response to user based on delegation result
 
 AVAILABLE AGENTS:
 {available_agents}
 
-DELEGATION RULES:
-1. Delegate ONCE per task - never call the same agent twice for the same task
-2. After delegation, report the result to the user (success or failure)
-3. If delegation fails or returns incomplete, tell the user and ask for clarification
-4. DO NOT loop - if you already delegated to an agent, do not delegate again
-
-WHEN TO DELEGATE:
-- Desktop automation (mouse, keyboard, clicks) → desktop-automation-agent
-- Web search or research → web-research-agent
+DELEGATION GUIDANCE:
+- Desktop tasks → desktop-automation-agent
+- Web research/search → web-research-agent
 - Code tasks → code-assistant-agent
 
-WHEN TO RESPOND DIRECTLY (NO delegation):
-- Greetings (hello, hi)
-- Questions about capabilities
-- When user message is unclear
+WHEN TO DELEGATE:
+- Complex tasks that match agent specializations
+- Tasks requiring specific tools or expertise
 
-CRITICAL: After receiving a delegation result, you MUST respond to the user with the result. Do not call delegate_to_agent again.
+WHEN TO RESPOND DIRECTLY:
+- Simple questions (greetings, capabilities)
+- When you already have a delegation result
+- When the task is already completed
+
+CRITICAL RULES:
+✓ Delegate at most ONCE per user request
+✓ After delegation, always provide final answer to user
+✓ Never call delegate_to_agent again once you have a result
+✓ If delegation gives partial results, still report them to user
 
 Available tools: {tools}
 
@@ -54,6 +62,8 @@ pub fn create_agent(metadata: Metadata) -> Agent {
         }],
         model_id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast".to_string(),
         max_iterations: 10,
+        separate_reasoning_model: false,
+        reasoning_model_id: None,
         metadata,
         is_default: Some(true),
         is_pinned: Some(true),

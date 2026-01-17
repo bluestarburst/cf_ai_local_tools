@@ -1,9 +1,10 @@
 /**
- * Backend Presets - Fetches tool and agent definitions from the local app backend
+ * Backend Presets - Fetches tool and agent definitions from local app backend
  */
 
 import { Agent } from '../types/agent';
 import { ToolDefinition } from '../types/tool';
+import { useWebSocketStore } from '../store/webSocketStore';
 
 export interface BackendPresetsResponse {
   tools: ToolDefinition[];
@@ -34,9 +35,9 @@ let isLoading = false;
 let loadPromise: Promise<BackendPresetsResponse> | null = null;
 
 /**
- * Fetch all presets from the backend in a single request
+ * Fetch all presets from backend in a single request
  */
-export async function fetchBackendPresets(ws: WebSocket): Promise<BackendPresetsResponse> {
+export async function fetchBackendPresets(): Promise<BackendPresetsResponse> {
   // Return cached presets if available
   if (cachedPresets) {
     return cachedPresets;
@@ -51,25 +52,34 @@ export async function fetchBackendPresets(ws: WebSocket): Promise<BackendPresets
   isLoading = true;
 
   loadPromise = new Promise((resolve, reject) => {
-    // Create a handler for the presets response
+    const { ws } = useWebSocketStore.getState();
+
+    if (!ws) {
+      isLoading = false;
+      loadPromise = null;
+      reject(new Error('WebSocket not connected'));
+      return;
+    }
+
+    // Create a handler for presets response
     const handler = (event: MessageEvent) => {
       try {
         const message = JSON.parse(event.data);
-        
+
         if (message.type === 'presets') {
-          // Remove the handler
+          // Remove handler
           ws.removeEventListener('message', handler);
-          
-          // Cache the response
+
+          // Cache response
           cachedPresets = {
             tools: message.tools || [],
             agents: message.agents || [],
             prompts: message.prompts || [],
           };
-          
+
           isLoading = false;
           loadPromise = null;
-          
+
           resolve(cachedPresets);
         }
       } catch (e) {

@@ -4,9 +4,9 @@
 // - Agents are defined in src/agents/{agent_type}/ submodules
 // - Tools are managed in src/tools/ module
 
+use super::prompts;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use super::prompts;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Metadata {
@@ -40,6 +40,10 @@ pub struct Agent {
     pub model_id: String,
     #[serde(rename = "maxIterations")]
     pub max_iterations: usize,
+    #[serde(rename = "separateReasoningModel", default)]
+    pub separate_reasoning_model: bool,
+    #[serde(rename = "reasoningModelId", default)]
+    pub reasoning_model_id: Option<String>,
     pub metadata: Metadata,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "isDefault")]
@@ -59,7 +63,7 @@ pub struct SystemPromptPreset {
     pub description: String,
     #[serde(rename = "type")]
     pub preset_type: String, // "systemPrompt"
-    pub category: String,    // "built-in"
+    pub category: String, // "built-in"
     pub content: String,
     pub metadata: Metadata,
     #[serde(skip_serializing_if = "Option::is_none")]

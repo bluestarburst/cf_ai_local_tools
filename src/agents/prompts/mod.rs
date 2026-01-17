@@ -3,10 +3,9 @@
 /// These are general-purpose prompt patterns that users can select
 /// when creating custom agents. Each agent module also defines its
 /// own specialized inline prompt.
-
 pub mod cot_standard;
-pub mod react_basic;
 pub mod enhanced_reasoning;
+pub mod react_basic;
 
 use crate::agents::presets::SystemPromptPreset;
 use std::collections::HashMap;
@@ -17,7 +16,10 @@ pub fn get_all_prompts() -> HashMap<String, SystemPromptPreset> {
 
     prompts.insert("cot-standard".to_string(), cot_standard::get_prompt());
     prompts.insert("react-basic".to_string(), react_basic::get_prompt());
-    prompts.insert("enhanced-reasoning".to_string(), enhanced_reasoning::get_prompt());
+    prompts.insert(
+        "enhanced-reasoning".to_string(),
+        enhanced_reasoning::get_prompt(),
+    );
 
     prompts
 }

@@ -16,6 +16,10 @@ pub struct AgentConfig {
     #[serde(rename = "maxIterations")]
     pub max_iterations: usize,
     pub tools: Vec<String>, // enabled tool IDs
+    #[serde(rename = "separateReasoningModel", default)]
+    pub separate_reasoning_model: bool,
+    #[serde(rename = "reasoningModelId", default)]
+    pub reasoning_model_id: Option<String>,
 }
 
 /// Represents a single ReAct step to be sent to the client
@@ -56,7 +60,7 @@ impl ToolCallSignature {
 /// Detect if we're in a loop (same tool called 3+ times with same args)
 fn is_loop_detected(history: &VecDeque<ToolCallSignature>, current: &ToolCallSignature) -> bool {
     let count = history.iter().filter(|h| *h == current).count();
-    count >= 2 // If we've seen this exact call twice already, we're looping
+    count >= 2 // If we've seen this exact call twice already (3 total), we're looping
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -197,7 +201,8 @@ where
         .collect::<Vec<_>>()
         .join("\n");
 
-    let interpolated_prompt = config.system_prompt
+    let interpolated_prompt = config
+        .system_prompt
         .replace("{tools}", &tools_list)
         .replace("{purpose}", "Execute user tasks using available tools");
 
@@ -220,14 +225,13 @@ where
 
         // PHASE 1: Get reasoning/thought (without tools)
         // This forces Cloudflare AI to provide reasoning before tool selection
-        let reasoning_prompt = format!(
-            "Before taking action, think step-by-step:\n\
-            1. What is the user's goal?\n\
-            2. What action should you take next?\n\
-            3. Will this complete the goal?\n\
+        let reasoning_prompt = "Before taking action, think step-by-step and reflect:\n\
+            1. What is the user's overall goal from the conversation history?\n\
+            2. Review the most recent observations (if any) and summarize key insights or changes they introduce.\n\
+            3. What specific action should you take next to progress toward the goal? Explain why this action differs from previous ones if applicable.\n\
+            4. Will this action complete the goal? If yes, end your thought with 'GOAL_COMPLETE'.\n\
             \n\
-            Provide your reasoning in 1-2 sentences, then I'll ask you to execute the action."
-        );
+            Provide concise reasoning (2-3 sentences max). Do NOT call tools or suggest actions here - focus on thinking only.".to_string();
 
         let mut reasoning_messages = messages.clone();
         reasoning_messages.push(Message {
@@ -235,13 +239,33 @@ where
             content: reasoning_prompt,
         });
 
+        let reasoning_model_id = if config.separate_reasoning_model {
+            config
+                .reasoning_model_id
+                .as_ref()
+                .unwrap_or(&config.model_id)
+        } else {
+            &config.model_id
+        };
         let reasoning_response = llm
-            .chat_with_tools(reasoning_messages.clone(), &config.model_id, None)
+            .chat_with_tools(reasoning_messages.clone(), reasoning_model_id, None)
             .await?;
 
         let thought = reasoning_response.response.trim().to_string();
-        debug!("[ReAct] Phase 1 (reasoning) - Raw response: '{}'", reasoning_response.response);
-        debug!("[ReAct] Phase 1 (reasoning) - Thought extracted: '{}'", thought);
+        debug!(
+            "[ReAct] Phase 1 (reasoning) - Raw response: '{}'",
+            reasoning_response.response
+        );
+        debug!(
+            "[ReAct] Phase 1 (reasoning) - Thought extracted: '{}'",
+            thought
+        );
+
+        // Check if goal is complete based on reasoning
+        if thought.to_uppercase().contains("GOAL_COMPLETE") {
+            debug!("[ReAct] Goal marked as complete in reasoning phase");
+            return Ok(format!("Task completed: {}", thought));
+        }
 
         // If reasoning phase returned empty, use a default thought based on the action
         let thought = if thought.is_empty() {
@@ -253,10 +277,10 @@ where
 
         // PHASE 2: Get tool calls (with tools)
         // Now ask the LLM to execute based on its reasoning
-        let action_prompt = format!(
-            "Now execute the action. You MUST call one of the available tools to make progress. \
-            Do not explain or describe - just call the tool with the appropriate parameters."
-        );
+        let action_prompt = "Based on your reasoning above, execute the next action. \
+            You MUST call exactly one available tool to make progress toward the goal. \
+            Do not explain, describe, or add text - just call the tool with the appropriate parameters. \
+            If your reasoning indicated 'GOAL_COMPLETE', do not call any tools.".to_string();
 
         let mut action_messages = messages.clone();
         action_messages.push(Message {
@@ -268,7 +292,10 @@ where
             content: action_prompt,
         });
 
-        debug!("[ReAct] Phase 2 - Sending {} tools to LLM", tools_option.as_ref().map(|t| t.len()).unwrap_or(0));
+        debug!(
+            "[ReAct] Phase 2 - Sending {} tools to LLM",
+            tools_option.as_ref().map(|t| t.len()).unwrap_or(0)
+        );
 
         let response = llm
             .chat_with_tools(action_messages, &config.model_id, tools_option.clone())
@@ -286,7 +313,8 @@ where
                 let first_tool_call = &tool_calls[0];
 
                 // Check for loop - same tool with same arguments called repeatedly
-                let call_signature = ToolCallSignature::new(&first_tool_call.name, &first_tool_call.arguments);
+                let call_signature =
+                    ToolCallSignature::new(&first_tool_call.name, &first_tool_call.arguments);
                 if is_loop_detected(&tool_call_history, &call_signature) {
                     warn!("[ReAct] Loop detected! Tool '{}' called with same arguments 3+ times. Breaking loop.", first_tool_call.name);
                     return Ok(format!(
@@ -305,7 +333,7 @@ where
                 }
                 let step = ExecutionStep {
                     step_number: iteration,
-                    thought,  // Use the reasoning from Phase 1
+                    thought, // Use the reasoning from Phase 1
                     action: Some(ToolAction {
                         tool: first_tool_call.name.clone(),
                         parameters: first_tool_call.arguments.clone(),
@@ -339,26 +367,47 @@ where
                     );
 
                     // Execute the tool using the provided executor
-                    let (observation, error) = match tool_executor(&tool_call.name, &tool_call.arguments).await {
-                        Ok(result) => (result, None),
-                        Err(e) => {
-                            let err_msg = format!("Error executing tool '{}': {}", tool_call.name, e);
-                            (err_msg.clone(), Some(err_msg))
-                        }
-                    };
+                    let (observation, error) =
+                        match tool_executor(&tool_call.name, &tool_call.arguments).await {
+                            Ok(result) => (result, None),
+                            Err(e) => {
+                                let err_msg =
+                                    format!("Error executing tool '{}': {}", tool_call.name, e);
+                                (err_msg.clone(), Some(err_msg))
+                            }
+                        };
 
                     debug!("[ReAct] Tool observation: {}", observation);
+
+                    // Format observation with status
+                    let status = if error.is_some() { "FAILED" } else { "SUCCESS" };
+                    let formatted_observation = format!(
+                        "[{}] Tool '{}': {}\nDetails: {}",
+                        status,
+                        tool_call.name,
+                        if error.is_some() {
+                            "Failed"
+                        } else {
+                            "Succeeded"
+                        },
+                        observation
+                    );
 
                     // Send observation step for real-time streaming
                     let obs_step = ExecutionStep {
                         step_number: iteration,
-                        thought: format!("Executed {} (tool {}/{})", tool_call.name, tool_idx + 1, tool_calls.len()),
+                        thought: format!(
+                            "Executed {} (tool {}/{})",
+                            tool_call.name,
+                            tool_idx + 1,
+                            tool_calls.len()
+                        ),
                         action: Some(ToolAction {
                             tool: tool_call.name.clone(),
                             parameters: tool_call.arguments.clone(),
                         }),
                         observation: Some(ToolObservation {
-                            result: serde_json::Value::String(observation.clone()),
+                            result: serde_json::Value::String(formatted_observation.clone()),
                             error,
                         }),
                         agent_id: agent_id.clone(),
@@ -369,7 +418,7 @@ where
                         let _ = sender.send(obs_step);
                     }
 
-                    observations.push(observation);
+                    observations.push(formatted_observation);
                 }
 
                 // Add observations as user message
@@ -377,7 +426,7 @@ where
                 messages.push(Message {
                     role: "user".to_string(),
                     content: format!(
-                        "Observations:\n{}\n\nWhat should you do next?",
+                        "Latest Observations:\n{}\n\nReflect on these results and decide the next action to progress toward the goal. If errors occurred, adapt your approach.",
                         observations_text
                     ),
                 });
@@ -402,8 +451,9 @@ where
     }
 
     Ok(format!(
-        "Max iterations ({}) reached. Task may be incomplete.",
-        config.max_iterations
+        "Max iterations ({}) reached without completing the goal. The task may require a different approach or additional tools. Last thought: '{}'",
+        config.max_iterations,
+        messages.last().map(|m| m.content.as_str()).unwrap_or("None")
     ))
 }
 

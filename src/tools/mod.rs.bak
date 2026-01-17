@@ -48,7 +48,7 @@ pub fn get_tool_by_id(tool_id: &str) -> Option<ToolDefinition> {
     get_all_tools().into_iter().find(|tool| tool.id == tool_id)
 }
 
-/// Execute a tool by name with the given arguments (async version)
+/// Execute a tool by name with the given arguments
 ///
 /// This function routes tool execution to the appropriate module based on the tool name.
 /// For computer automation tools, it requires an AutomationHandler instance to handle
@@ -62,48 +62,60 @@ pub fn get_tool_by_id(tool_id: &str) -> Option<ToolDefinition> {
 /// # Returns
 /// * `Ok(String)` - Tool execution result
 /// * `Err(anyhow::Error)` - Execution error
-pub async fn execute_tool_async(
+pub fn execute_tool(
     tool_name: &str,
     arguments: &serde_json::Value,
     handler: Option<&AutomationHandler>,
 ) -> Result<String> {
-    // Try to find the tool first
+    // Try to find tool first
     let tool =
         get_tool_by_id(tool_name).ok_or_else(|| anyhow::anyhow!("Unknown tool: {}", tool_name))?;
-
+    
     // Route to appropriate module based on category
     match tool.category.as_str() {
         "mouse" | "keyboard" | "system" => {
-            // Computer automation tools (sync - call directly)
-            let handler = handler.ok_or_else(|| {
-                anyhow::anyhow!("AutomationHandler required for tool: {}", tool_name)
-            })?;
+            // Computer automation tools
+            let handler = handler
+                .ok_or_else(|| {
+                    anyhow::anyhow!("AutomationHandler required for tool: {}", tool_name)
+                })?;
             computer_automation::execute_automation_tool(tool_name, arguments, handler)
         }
+        "web" => {
+            // Web search/fetch tools - use blocking spawn for proper async handling
+            tokio::task::block_in_place(|| {
+                web_search::execute_web_search(tool_name, arguments)
+            })
+        }
+        "delegation" => {
+            // Utility/delegation tools
+            util::execute_utility_tool(tool_name, arguments)
+        }
+        _ => Err(anyhow::anyhow!("Unknown tool category: {}", tool.category)),
+    }
+}
         "web" => {
             // Web search/fetch tools (async)
             web_search::execute_web_tool_async(tool_name, arguments).await
         }
         "delegation" => {
-            // Utility/delegation tools (sync)
+            // Utility/delegation tools
             util::execute_utility_tool(tool_name, arguments)
         }
         _ => Err(anyhow::anyhow!("Unknown tool category: {}", tool.category)),
     }
 }
 
-/// Execute a tool by name with the given arguments (sync wrapper - kept for backward compatibility)
+/// Backward compatibility: keep sync version for non-async callers
 #[allow(dead_code)]
 pub fn execute_tool(
     tool_name: &str,
     arguments: &serde_json::Value,
     handler: Option<&AutomationHandler>,
 ) -> Result<String> {
-    tokio::task::block_in_place(|| {
-        let rt = tokio::runtime::Runtime::new()
-            .map_err(|_| anyhow::anyhow!("Failed to create runtime"))?;
-        rt.block_on(execute_tool_async(tool_name, arguments, handler))
-    })
+    let rt =
+        tokio::runtime::Runtime::new().map_err(|_| anyhow::anyhow!("Failed to create runtime"))?;
+    rt.block_on(execute_tool_async(tool_name, arguments, handler))
 }
 
 #[cfg(test)]

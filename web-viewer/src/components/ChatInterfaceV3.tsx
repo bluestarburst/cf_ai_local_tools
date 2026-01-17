@@ -9,30 +9,149 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useAgentStore } from '../store/agentStore';
-import { useExecutionStore } from '../store/executionStore';
 import { usePromptStore, handlePromptMessage } from '../store/promptStore';
-import { useWebSocket } from '../hooks/useWebSocket';
+import { useWebSocketStore } from '../store/webSocketStore';
 import { fetchBackendPresets, hasPresetsLoaded } from '../utils/backendPresets';
-import { ExecutionLogger } from './ExecutionLogger';
+import type { ExecutionStep } from '../store/executionStore';
 
-const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'http://localhost:8787';
-const WS_URL = WORKER_URL.replace(/^http/, 'ws') + '/connect?device=web-viewer';
+// Note: WebSocket connection is managed by webSocketStore in App.tsx
 
 interface ChatMessage {
     role: 'user' | 'assistant';
     content: string;
+    executionSteps?: ExecutionStep[];
+    isStreaming?: boolean;
 }
+
+const ExecutionSteps: React.FC<{ steps: ExecutionStep[] }> = ({ steps }) => {
+    if (!steps || steps.length === 0) return null;
+
+    const [isExpanded, setIsExpanded] = React.useState(true);
+
+    return (
+        <div className="mt-3 border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
+            <button
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="w-full px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-100 flex items-center justify-between"
+            >
+                <span>📋 Execution Steps ({steps.length})</span>
+                <span>{isExpanded ? '▼' : '▶'}</span>
+            </button>
+            {isExpanded && (
+                <div className="p-3 space-y-3">
+                    {steps.map((step, idx) => {
+                        const hasError = !!step.observation?.error;
+                        const hasAction = !!step.action;
+                        const isThinkingOnly = !hasAction;
+
+                        return (
+                            <div
+                                key={idx}
+                                className={`border rounded p-2 ${
+                                    hasError ? 'bg-red-50 border-red-200' :
+                                    isThinkingOnly ? 'bg-blue-50 border-blue-200' :
+                                    'bg-white border-gray-200'
+                                }`}
+                            >
+                                <div className="text-xs font-medium mb-1 flex items-center justify-between">
+                                    <span className="text-gray-500">Step {step.stepNumber}</span>
+                                    {hasError && (
+                                        <span className="text-red-600 font-semibold text-xs">FAILED</span>
+                                    )}
+                                    {isThinkingOnly && (
+                                        <span className="text-blue-600 font-semibold text-xs">REASONING</span>
+                                    )}
+                                    {!hasError && hasAction && (
+                                        <span className="text-green-600 font-semibold text-xs">SUCCESS</span>
+                                    )}
+                                </div>
+
+                                <div className="mb-2">
+                                    <div className="text-xs font-medium text-gray-700 mb-1">💭 Thought</div>
+                                    <div className="text-xs text-gray-800 bg-blue-50 p-1.5 rounded">
+                                        {step.thought}
+                                    </div>
+                                </div>
+
+                                {step.action && (
+                                    <div className="mb-2">
+                                        <div className="text-xs font-medium text-gray-700 mb-1">
+                                            {step.observation?.error ? '⚠️ Attempted Action' : '⚡ Action'}
+                                        </div>
+                                        <div
+                                            className={`border rounded p-1.5 text-xs ${
+                                                step.observation?.error
+                                                    ? 'bg-orange-50 border-orange-200'
+                                                    : 'bg-purple-50 border-purple-200'
+                                            }`}
+                                        >
+                                            <div className={`font-mono ${step.observation?.error ? 'text-orange-900' : 'text-purple-900'}`}>
+                                                {step.action.tool}
+                                            </div>
+                                            {step.action.parameters && (
+                                                <pre className="text-xs text-gray-600 mt-1 overflow-x-auto">
+                                                    {JSON.stringify(step.action.parameters, null, 2)}
+                                                </pre>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {step.observation && (
+                                    <div>
+                                        <div className="text-xs font-medium text-gray-700 mb-1">
+                                            {step.observation.error ? '❌ Error' : '✅ Observation'}
+                                        </div>
+                                        <div
+                                            className={`text-xs whitespace-pre-wrap p-1.5 rounded ${
+                                                step.observation.error
+                                                    ? 'bg-red-50 border border-red-200 text-red-800'
+                                                    : 'bg-green-50 border border-green-200 text-gray-700'
+                                            }`}
+                                        >
+                                            {step.observation.error ? (
+                                                <div>
+                                                    <div className="font-semibold mb-1">Error:</div>
+                                                    <div className="text-xs">{step.observation.error}</div>
+                                                    {step.observation.result && (
+                                                        <div className="mt-2 pt-1 border-t border-red-300">
+                                                            <div className="font-semibold mb-1">Partial Result:</div>
+                                                            <pre className="text-xs overflow-x-auto">
+                                                                {typeof step.observation.result === 'string'
+                                                                    ? step.observation.result
+                                                                    : JSON.stringify(step.observation.result, null, 2)}
+                                                            </pre>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div>
+                                                    {typeof step.observation.result === 'string'
+                                                        ? step.observation.result
+                                                        : JSON.stringify(step.observation.result, null, 2)}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+};
 
 export const ChatInterfaceV3: React.FC = () => {
     const { currentAgent, setBackendAgents } = useAgentStore();
-    const { startExecution, addIteration, updateFinalResponse, finishExecution } = useExecutionStore();
     const { setWebSocket: setPromptWebSocket } = usePromptStore();
-    const { ws, connected, send } = useWebSocket(WS_URL);
+    const { ws, connected, send } = useWebSocketStore();
     const [message, setMessage] = useState('');
     const [conversationHistory, setConversationHistory] = useState<ChatMessage[]>([]);
     const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    const executionStartTime = useRef<number>(0);
+    const currentAssistantIndex = useRef<number | null>(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -44,19 +163,19 @@ export const ChatInterfaceV3: React.FC = () => {
 
     // Pass WebSocket to prompt store when connected
     useEffect(() => {
-        if (ws && connected) {
+        if (ws) {
             setPromptWebSocket(ws);
         }
-    }, [ws, connected, setPromptWebSocket]);
+    }, [ws, setPromptWebSocket]);
 
     // Fetch backend presets on connection
     useEffect(() => {
-        if (!ws || !connected) return;
+        if (!connected) return;
 
         // Only fetch if not already cached
         if (!hasPresetsLoaded()) {
             console.log('[Chat] Fetching backend presets...');
-            fetchBackendPresets(ws)
+            fetchBackendPresets()
                 .then((presets) => {
                     console.log('[Chat] Backend presets loaded:', presets);
                     // Update agent store with backend agents
@@ -68,7 +187,7 @@ export const ChatInterfaceV3: React.FC = () => {
                     console.error('[Chat] Error fetching backend presets:', error);
                 });
         }
-    }, [ws, connected, setBackendAgents]);
+    }, [connected, setBackendAgents]);
 
     // Listen for responses from WebSocket
     useEffect(() => {
@@ -90,36 +209,37 @@ export const ChatInterfaceV3: React.FC = () => {
                     handlePromptMessage(data);
                 } else if (data.type === 'execution_step') {
                     console.log('[Chat] Received execution step:', data.step);
-                    addIteration(data.step);
+                    // Add step to current assistant message
+                    if (currentAssistantIndex.current !== null) {
+                        setConversationHistory((prev) => {
+                            const updated = [...prev];
+                            const currentMsg = updated[currentAssistantIndex.current!];
+                            updated[currentAssistantIndex.current!] = {
+                                ...currentMsg,
+                                executionSteps: [...(currentMsg.executionSteps || []), data.step],
+                            };
+                            return updated;
+                        });
+                    }
                 } else if (data.type === 'chat_response') {
                     console.log('[Chat] Received response:', data);
 
-                    // Update final response in execution store
-                    updateFinalResponse(data.content);
-
-                    // Add assistant response to conversation
-                    setConversationHistory((prev) => [
-                        ...prev,
-                        {
-                            role: 'assistant',
-                            content: data.content,
-                        },
-                    ]);
-
-                    // Finish execution
-                    const executionTime = Date.now() - executionStartTime.current;
-                    finishExecution({
-                        agentId: currentAgent?.id || '',
-                        userMessage: message,
-                        iterations: [],
-                        finalResponse: data.content,
-                        toolCallsCount: 0,
-                        executionTime,
-                        completedAt: new Date().toISOString(),
-                        status: 'success',
-                    });
+                    // Update current assistant message with final response
+                    if (currentAssistantIndex.current !== null) {
+                        setConversationHistory((prev) => {
+                            const updated = [...prev];
+                            const currentMsg = updated[currentAssistantIndex.current!];
+                            updated[currentAssistantIndex.current!] = {
+                                ...currentMsg,
+                                content: data.content,
+                                isStreaming: false,
+                            };
+                            return updated;
+                        });
+                    }
 
                     setIsWaitingForResponse(false);
+                    currentAssistantIndex.current = null;
                 }
             } catch (error) {
                 console.error('[Chat] Error parsing message:', error);
@@ -131,7 +251,7 @@ export const ChatInterfaceV3: React.FC = () => {
         return () => {
             ws.removeEventListener('message', handleMessage);
         };
-    }, [ws, currentAgent, message, addIteration, updateFinalResponse, finishExecution]);
+    }, [ws, currentAgent, message]);
 
     const handleSend = async () => {
         if (!message.trim() || !currentAgent || isWaitingForResponse || !connected) {
@@ -141,15 +261,15 @@ export const ChatInterfaceV3: React.FC = () => {
         const userMessage = message.trim();
         setMessage('');
 
-        // Add user message to conversation
+        // Add user message and placeholder assistant message
         setConversationHistory((prev) => [
             ...prev,
             { role: 'user', content: userMessage },
+            { role: 'assistant', content: '', executionSteps: [], isStreaming: true },
         ]);
 
-        // Start tracking execution
-        executionStartTime.current = Date.now();
-        startExecution(userMessage, currentAgent?.id);
+        // Track index of current assistant message
+        currentAssistantIndex.current = conversationHistory.length + 1;
 
         // Send chat request via WebSocket
         setIsWaitingForResponse(true);
@@ -179,36 +299,20 @@ export const ChatInterfaceV3: React.FC = () => {
         <div className="flex flex-col h-full bg-gray-50">
             {/* Header */}
             <div className="px-6 py-4 bg-white border-b border-gray-200">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h2 className="text-lg font-semibold text-gray-900">
-                            {currentAgent?.name || 'Select an agent'}
-                        </h2>
-                        {currentAgent && (
-                            <p className="text-sm text-gray-500">
-                                Model: {currentAgent.modelId.split('/').pop()}
-                            </p>
-                        )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <div
-                            className={`px-3 py-1 rounded-full text-sm font-medium ${
-                                connected
-                                    ? 'bg-green-100 text-green-800'
-                                    : 'bg-red-100 text-red-800'
-                            }`}
-                        >
-                            {connected ? 'Connected' : 'Disconnected'}
-                        </div>
-                    </div>
+                <div>
+                    <h2 className="text-lg font-semibold text-gray-900">
+                        {currentAgent?.name || 'Select an agent'}
+                    </h2>
+                    {currentAgent && (
+                        <p className="text-sm text-gray-500">
+                            Model: {currentAgent.modelId.split('/').pop()}
+                        </p>
+                    )}
                 </div>
             </div>
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-                {/* Execution Logger - shows intermediate steps */}
-                <ExecutionLogger />
-
                 {conversationHistory.length === 0 && (
                     <div className="text-center text-gray-500 mt-8">
                         <p className="text-lg mb-2">Start a conversation</p>
@@ -232,20 +336,22 @@ export const ChatInterfaceV3: React.FC = () => {
                                     : 'bg-white text-gray-900 border border-gray-200'
                             }`}
                         >
-                            <p className="whitespace-pre-wrap">{msg.content}</p>
+                            {msg.role === 'assistant' && msg.executionSteps && (
+                                <ExecutionSteps steps={msg.executionSteps} />
+                            )}
+                            {msg.content && (
+                                <p className={`whitespace-pre-wrap ${msg.executionSteps ? 'mt-3' : ''}`}>
+                                    {msg.content}
+                                </p>
+                            )}
+                            {msg.isStreaming && !msg.content && (
+                                <div className="flex items-center gap-2">
+                                    <div className="animate-pulse text-sm">Thinking...</div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 ))}
-
-                {isWaitingForResponse && (
-                    <div className="flex justify-start">
-                        <div className="max-w-2xl rounded-lg px-4 py-3 bg-white text-gray-900 border border-gray-200">
-                            <div className="flex items-center gap-2">
-                                <div className="animate-pulse">Thinking...</div>
-                            </div>
-                        </div>
-                    </div>
-                )}
 
                 <div ref={messagesEndRef} />
             </div>

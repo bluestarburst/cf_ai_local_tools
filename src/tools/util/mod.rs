@@ -1,5 +1,5 @@
-use crate::agents::{ToolDefinition, ToolParameter};
 use crate::agents::prompt_interpolation;
+use crate::agents::{ToolDefinition, ToolParameter};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
@@ -80,47 +80,46 @@ pub fn get_all_utility_tools() -> Vec<ToolDefinition> {
 }
 
 /// Execute a utility tool
-/// 
+///
 /// # Arguments
 /// * `tool_name` - The ID of the tool to execute
 /// * `arguments` - JSON arguments for the tool
-/// 
+///
 /// # Returns
 /// * `Ok(String)` - Success message or delegation marker
 /// * `Err(anyhow::Error)` - If the tool is unknown or arguments are invalid
-/// 
+///
 /// Note: For delegation, this returns a special JSON-encoded DelegationRequest
 /// that the caller should detect and handle by executing the delegated agent.
-pub fn execute_utility_tool(
-    tool_name: &str,
-    arguments: &serde_json::Value,
-) -> Result<String> {
+pub fn execute_utility_tool(tool_name: &str, arguments: &serde_json::Value) -> Result<String> {
     // Verify this is a utility tool
-    if !get_all_utility_tools()
-        .iter()
-        .any(|t| t.id == tool_name)
-    {
+    if !get_all_utility_tools().iter().any(|t| t.id == tool_name) {
         return Err(anyhow::anyhow!("Unknown utility tool: {}", tool_name));
     }
-    
+
     match tool_name {
         "delegate_to_agent" => {
             // Parse delegation parameters
-            let agent_id = arguments["agent_id"].as_str()
+            let agent_id = arguments["agent_id"]
+                .as_str()
                 .ok_or_else(|| anyhow::anyhow!("Missing agent_id"))?
                 .to_string();
-            let task = arguments["task"].as_str()
+            let task = arguments["task"]
+                .as_str()
                 .ok_or_else(|| anyhow::anyhow!("Missing task"))?
                 .to_string();
 
             // Return a special marker that indicates delegation is requested
             // The caller (main.rs) should detect this and handle delegation
             let delegation = DelegationRequest { agent_id, task };
-            
+
             // Return as JSON with special prefix for easy detection
-            Ok(format!("__DELEGATE__:{}", serde_json::to_string(&delegation)?))
+            Ok(format!(
+                "__DELEGATE__:{}",
+                serde_json::to_string(&delegation)?
+            ))
         }
-        _ => Err(anyhow::anyhow!("Unknown utility tool: {}", tool_name))
+        _ => Err(anyhow::anyhow!("Unknown utility tool: {}", tool_name)),
     }
 }
 
@@ -132,4 +131,3 @@ pub fn is_delegation_request(result: &str) -> Option<DelegationRequest> {
         None
     }
 }
-

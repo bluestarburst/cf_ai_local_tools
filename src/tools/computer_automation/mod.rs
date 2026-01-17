@@ -1,14 +1,14 @@
 mod executor;
 
-pub use executor::{AutomationHandler, Command, Response};
 use executor::create_executor;
+pub use executor::{AutomationHandler, Command, Response};
 
 #[cfg(test)]
 mod test_integration;
 
-use serde_json::json;
 use crate::agents::{ToolDefinition, ToolParameter};
 use anyhow::Result;
+use serde_json::json;
 
 /// Get all mouse/keyboard automation tools
 pub fn get_mouse_tools() -> Vec<ToolDefinition> {
@@ -51,16 +51,18 @@ pub fn get_mouse_tools() -> Vec<ToolDefinition> {
             name: "Mouse Click".to_string(),
             description: "Click a mouse button at current position".to_string(),
             category: "mouse".to_string(),
-            parameters: vec![
-                ToolParameter {
-                    name: "button".to_string(),
-                    param_type: "string".to_string(),
-                    description: "Which button to click".to_string(),
-                    required: true,
-                    enum_values: Some(vec!["left".to_string(), "right".to_string(), "middle".to_string()]),
-                    default: None,
-                },
-            ],
+            parameters: vec![ToolParameter {
+                name: "button".to_string(),
+                param_type: "string".to_string(),
+                description: "Which button to click".to_string(),
+                required: true,
+                enum_values: Some(vec![
+                    "left".to_string(),
+                    "right".to_string(),
+                    "middle".to_string(),
+                ]),
+                default: None,
+            }],
             returns_observation: true,
         },
         ToolDefinition {
@@ -74,7 +76,12 @@ pub fn get_mouse_tools() -> Vec<ToolDefinition> {
                     param_type: "string".to_string(),
                     description: "Direction to scroll".to_string(),
                     required: true,
-                    enum_values: Some(vec!["up".to_string(), "down".to_string(), "left".to_string(), "right".to_string()]),
+                    enum_values: Some(vec![
+                        "up".to_string(),
+                        "down".to_string(),
+                        "left".to_string(),
+                        "right".to_string(),
+                    ]),
                     default: None,
                 },
                 ToolParameter {
@@ -99,16 +106,14 @@ pub fn get_keyboard_tools() -> Vec<ToolDefinition> {
             name: "Keyboard Input".to_string(),
             description: "Type text using the keyboard".to_string(),
             category: "keyboard".to_string(),
-            parameters: vec![
-                ToolParameter {
-                    name: "text".to_string(),
-                    param_type: "string".to_string(),
-                    description: "Text to type".to_string(),
-                    required: true,
-                    enum_values: None,
-                    default: None,
-                },
-            ],
+            parameters: vec![ToolParameter {
+                name: "text".to_string(),
+                param_type: "string".to_string(),
+                description: "Text to type".to_string(),
+                required: true,
+                enum_values: None,
+                default: None,
+            }],
             returns_observation: true,
         },
         ToolDefinition {
@@ -116,16 +121,15 @@ pub fn get_keyboard_tools() -> Vec<ToolDefinition> {
             name: "Keyboard Command".to_string(),
             description: "Execute a keyboard command or key combination".to_string(),
             category: "keyboard".to_string(),
-            parameters: vec![
-                ToolParameter {
-                    name: "command".to_string(),
-                    param_type: "string".to_string(),
-                    description: "Keyboard command to execute (e.g., 'cmd+c', 'ctrl+v', 'Return')".to_string(),
-                    required: true,
-                    enum_values: None,
-                    default: None,
-                },
-            ],
+            parameters: vec![ToolParameter {
+                name: "command".to_string(),
+                param_type: "string".to_string(),
+                description: "Keyboard command to execute (e.g., 'cmd+c', 'ctrl+v', 'Return')"
+                    .to_string(),
+                required: true,
+                enum_values: None,
+                default: None,
+            }],
             returns_observation: true,
         },
     ]
@@ -135,7 +139,7 @@ pub fn get_keyboard_tools() -> Vec<ToolDefinition> {
 pub fn get_all_automation_tools() -> Vec<ToolDefinition> {
     let mut tools = get_mouse_tools();
     tools.extend(get_keyboard_tools());
-    
+
     // Add system tools
     tools.push(ToolDefinition {
         id: "get_mouse_position".to_string(),
@@ -145,7 +149,7 @@ pub fn get_all_automation_tools() -> Vec<ToolDefinition> {
         parameters: vec![],
         returns_observation: true,
     });
-    
+
     tools.push(ToolDefinition {
         id: "take_screenshot".to_string(),
         name: "Take Screenshot".to_string(),
@@ -154,17 +158,17 @@ pub fn get_all_automation_tools() -> Vec<ToolDefinition> {
         parameters: vec![],
         returns_observation: true,
     });
-    
+
     tools
 }
 
 /// Execute a computer automation tool
-/// 
+///
 /// # Arguments
 /// * `tool_name` - The ID of the tool to execute
 /// * `arguments` - JSON arguments for the tool
 /// * `handler` - The AutomationHandler instance to use for execution
-/// 
+///
 /// # Returns
 /// * `Ok(String)` - Success message or result
 /// * `Err(anyhow::Error)` - Execution error
@@ -174,15 +178,11 @@ pub fn execute_automation_tool(
     handler: &AutomationHandler,
 ) -> Result<String> {
     // Verify this is an automation tool
-    if !get_all_automation_tools()
-        .iter()
-        .any(|t| t.id == tool_name)
-    {
+    if !get_all_automation_tools().iter().any(|t| t.id == tool_name) {
         return Err(anyhow::anyhow!("Unknown automation tool: {}", tool_name));
     }
-    
+
     // Use the executor to handle the tool
     let executor = create_executor(handler);
     executor(tool_name, arguments)
 }
-

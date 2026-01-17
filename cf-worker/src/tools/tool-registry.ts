@@ -18,7 +18,7 @@ const WORKER_TOOLS: Record<string, ToolDefinition> = {
       {
         name: 'agent_id',
         type: 'string',
-        description: 'ID of the agent to delegate to (e.g., desktop-automation-agent, web-research-agent, code-assistant-agent, general-assistant, conversational-agent)',
+        description: 'ID of the agent to delegate to (e.g., desktop-automation-agent, web-research-agent, code-assistant-agent, conversational-agent)',
         required: true,
       },
       {

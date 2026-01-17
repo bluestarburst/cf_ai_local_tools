@@ -13,7 +13,7 @@ pub struct Prompt {
     pub description: String,
     #[serde(rename = "type")]
     pub prompt_type: String, // "systemPrompt"
-    pub category: String,    // "built-in" or "user-created"
+    pub category: String, // "built-in" or "user-created"
     pub content: String,
     pub metadata: PromptMetadata,
     #[serde(rename = "isLocked")]
@@ -44,8 +44,7 @@ impl PromptStorage {
 
         // Ensure directory exists
         if let Some(parent) = storage_path.parent() {
-            fs::create_dir_all(parent)
-                .context("Failed to create storage directory")?;
+            fs::create_dir_all(parent).context("Failed to create storage directory")?;
         }
 
         let mut storage = Self {
@@ -61,20 +60,22 @@ impl PromptStorage {
 
     /// Get the storage file path
     fn get_storage_path() -> Result<PathBuf> {
-        let config_dir = dirs::config_dir()
-            .context("Could not determine config directory")?;
+        let config_dir = dirs::config_dir().context("Could not determine config directory")?;
         Ok(config_dir.join("cf_ai_local_tools/prompts.json"))
     }
 
     /// Load prompts from disk
     fn load(&mut self) -> Result<()> {
         if self.storage_path.exists() {
-            let content = fs::read_to_string(&self.storage_path)
-                .context("Failed to read prompts file")?;
-            let prompts: HashMap<String, Prompt> = serde_json::from_str(&content)
-                .context("Failed to parse prompts file")?;
+            let content =
+                fs::read_to_string(&self.storage_path).context("Failed to read prompts file")?;
+            let prompts: HashMap<String, Prompt> =
+                serde_json::from_str(&content).context("Failed to parse prompts file")?;
             self.prompts = prompts;
-            info!("[PromptStorage] Loaded {} prompts from storage", self.prompts.len());
+            info!(
+                "[PromptStorage] Loaded {} prompts from storage",
+                self.prompts.len()
+            );
         } else {
             info!("[PromptStorage] No prompts file found, starting with empty storage");
         }
@@ -83,11 +84,13 @@ impl PromptStorage {
 
     /// Save prompts to disk
     fn save(&self) -> Result<()> {
-        let json = serde_json::to_string_pretty(&self.prompts)
-            .context("Failed to serialize prompts")?;
-        fs::write(&self.storage_path, json)
-            .context("Failed to write prompts file")?;
-        info!("[PromptStorage] Saved {} prompts to storage", self.prompts.len());
+        let json =
+            serde_json::to_string_pretty(&self.prompts).context("Failed to serialize prompts")?;
+        fs::write(&self.storage_path, json).context("Failed to write prompts file")?;
+        info!(
+            "[PromptStorage] Saved {} prompts to storage",
+            self.prompts.len()
+        );
         Ok(())
     }
 
@@ -127,7 +130,9 @@ impl PromptStorage {
 
     /// Update an existing user-created prompt
     pub fn update(&mut self, id: &str, mut updates: Prompt) -> Result<Prompt> {
-        let existing = self.prompts.get(id)
+        let existing = self
+            .prompts
+            .get(id)
             .context(format!("Prompt '{}' not found", id))?;
 
         if existing.is_locked {
@@ -149,7 +154,9 @@ impl PromptStorage {
 
     /// Delete a user-created prompt
     pub fn delete(&mut self, id: &str) -> Result<()> {
-        let existing = self.prompts.get(id)
+        let existing = self
+            .prompts
+            .get(id)
             .context(format!("Prompt '{}' not found", id))?;
 
         if existing.is_locked {

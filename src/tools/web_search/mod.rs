@@ -1,15 +1,12 @@
-use serde_json::{json, Value};
 use crate::agents::{ToolDefinition, ToolParameter};
 use anyhow::Result;
 use reqwest::Client;
 use scraper::{Html, Selector};
+use serde_json::{json, Value};
 use tracing::debug;
 use websearch::{
     providers::{ArxivProvider, DuckDuckGoProvider},
-    web_search,
-    SearchOptions,
-    SearchProvider,
-    SearchResult as WebSearchResult,
+    web_search, SearchOptions, SearchProvider, SearchResult as WebSearchResult,
 };
 
 const DEFAULT_PROVIDER: &str = "duckduckgo";
@@ -72,33 +69,36 @@ pub fn get_search_tools() -> Vec<ToolDefinition> {
 
 /// Get all URL fetching and content extraction tools
 pub fn get_fetch_tools() -> Vec<ToolDefinition> {
-    vec![
-        ToolDefinition {
-            id: "fetch_url".to_string(),
-            name: "Fetch URL".to_string(),
-            description: "Fetch and extract content from a URL".to_string(),
-            category: "web".to_string(),
-            parameters: vec![
-                ToolParameter {
-                    name: "url".to_string(),
-                    param_type: "string".to_string(),
-                    description: "URL to fetch".to_string(),
-                    required: true,
-                    enum_values: None,
-                    default: None,
-                },
-                ToolParameter {
-                    name: "extract_type".to_string(),
-                    param_type: "string".to_string(),
-                    description: "Type of content to extract (text, links, images, all)".to_string(),
-                    required: false,
-                    enum_values: Some(vec!["text".to_string(), "links".to_string(), "images".to_string(), "all".to_string()]),
-                    default: Some(json!("text")),
-                },
-            ],
-            returns_observation: true,
-        },
-    ]
+    vec![ToolDefinition {
+        id: "fetch_url".to_string(),
+        name: "Fetch URL".to_string(),
+        description: "Fetch and extract content from a URL".to_string(),
+        category: "web".to_string(),
+        parameters: vec![
+            ToolParameter {
+                name: "url".to_string(),
+                param_type: "string".to_string(),
+                description: "URL to fetch".to_string(),
+                required: true,
+                enum_values: None,
+                default: None,
+            },
+            ToolParameter {
+                name: "extract_type".to_string(),
+                param_type: "string".to_string(),
+                description: "Type of content to extract (text, links, images, all)".to_string(),
+                required: false,
+                enum_values: Some(vec![
+                    "text".to_string(),
+                    "links".to_string(),
+                    "images".to_string(),
+                    "all".to_string(),
+                ]),
+                default: Some(json!("text")),
+            },
+        ],
+        returns_observation: true,
+    }]
 }
 
 /// Get all web-related tools
@@ -110,7 +110,8 @@ pub fn get_all_web_tools() -> Vec<ToolDefinition> {
 
 /// Parse string from JSON arguments
 fn parse_string(value: &Value, field: &str) -> Result<String> {
-    value.as_str()
+    value
+        .as_str()
         .ok_or_else(|| anyhow::anyhow!("Parameter '{}' is required and must be a string", field))
         .map(|s| s.to_string())
 }
@@ -119,8 +120,10 @@ fn parse_string(value: &Value, field: &str) -> Result<String> {
 fn parse_optional_string(value: Option<&Value>) -> Result<Option<String>> {
     match value {
         Some(v) if v.is_null() => Ok(None),
-        Some(v) => v.as_str().map(|s| Some(s.to_string())).ok_or_else(||
-            anyhow::anyhow!("Optional string parameter must be a string")),
+        Some(v) => v
+            .as_str()
+            .map(|s| Some(s.to_string()))
+            .ok_or_else(|| anyhow::anyhow!("Optional string parameter must be a string")),
         None => Ok(None),
     }
 }
@@ -215,7 +218,7 @@ pub async fn execute_web_search_async(arguments: &Value) -> Result<String> {
     // Note: Using a timeout to prevent hanging on provider requests
     let timeout_duration = std::time::Duration::from_secs(15);
     let web_search_future = web_search(options);
-    
+
     let payload = match tokio::time::timeout(timeout_duration, web_search_future).await {
         Ok(Ok(results)) => json!({
             "status": "success",
@@ -254,23 +257,26 @@ fn execute_web_search(arguments: &Value) -> Result<String> {
 /// Execute URL fetch (async version)
 pub async fn execute_fetch_url_async(arguments: &Value) -> Result<String> {
     let url = parse_string(&arguments["url"], "url")?;
-    let extract_type = parse_optional_string(arguments.get("extract_type"))?
-        .unwrap_or_else(|| "text".to_string());
+    let extract_type =
+        parse_optional_string(arguments.get("extract_type"))?.unwrap_or_else(|| "text".to_string());
 
     // Validate extract_type
     match extract_type.as_str() {
-        "text" | "links" | "images" | "all" => {},
-        _ => return Err(anyhow::anyhow!(
-            "extract_type must be one of [text, links, images, all], got: '{}'",
-            extract_type
-        )),
+        "text" | "links" | "images" | "all" => {}
+        _ => {
+            return Err(anyhow::anyhow!(
+                "extract_type must be one of [text, links, images, all], got: '{}'",
+                extract_type
+            ))
+        }
     }
 
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
 
-    let response = client.get(&url)
+    let response = client
+        .get(&url)
         .header("User-Agent", "cf-ai-local-tools/0.1.0")
         .send()
         .await?;
@@ -286,7 +292,8 @@ pub async fn execute_fetch_url_async(arguments: &Value) -> Result<String> {
         "text" => {
             // Extract all text content
             let body_selector = Selector::parse("body").unwrap();
-            let text = document.select(&body_selector)
+            let text = document
+                .select(&body_selector)
                 .next()
                 .map(|body| {
                     body.text()
@@ -314,7 +321,8 @@ pub async fn execute_fetch_url_async(arguments: &Value) -> Result<String> {
         }
         "links" => {
             let link_selector = Selector::parse("a[href]").unwrap();
-            let links: Vec<String> = document.select(&link_selector)
+            let links: Vec<String> = document
+                .select(&link_selector)
                 .filter_map(|a| a.value().attr("href"))
                 .filter(|href| href.starts_with("http"))
                 .take(50)
@@ -330,7 +338,8 @@ pub async fn execute_fetch_url_async(arguments: &Value) -> Result<String> {
         }
         "images" => {
             let img_selector = Selector::parse("img[src]").unwrap();
-            let images: Vec<String> = document.select(&img_selector)
+            let images: Vec<String> = document
+                .select(&img_selector)
                 .filter_map(|img| img.value().attr("src"))
                 .filter(|src| src.starts_with("http"))
                 .take(20)
@@ -346,7 +355,8 @@ pub async fn execute_fetch_url_async(arguments: &Value) -> Result<String> {
         }
         "all" => {
             let body_selector = Selector::parse("body").unwrap();
-            let text = document.select(&body_selector)
+            let text = document
+                .select(&body_selector)
                 .next()
                 .map(|body| {
                     body.text()
@@ -365,7 +375,8 @@ pub async fn execute_fetch_url_async(arguments: &Value) -> Result<String> {
             };
 
             let link_selector = Selector::parse("a[href]").unwrap();
-            let links: Vec<String> = document.select(&link_selector)
+            let links: Vec<String> = document
+                .select(&link_selector)
                 .filter_map(|a| a.value().attr("href"))
                 .filter(|href| href.starts_with("http"))
                 .take(20)
@@ -380,7 +391,7 @@ pub async fn execute_fetch_url_async(arguments: &Value) -> Result<String> {
                 "links": links
             })
         }
-        _ => return Err(anyhow::anyhow!("Invalid extract_type"))
+        _ => return Err(anyhow::anyhow!("Invalid extract_type")),
     };
 
     Ok(content.to_string())
@@ -394,7 +405,7 @@ fn execute_fetch_url(arguments: &Value) -> Result<String> {
     rt.block_on(execute_fetch_url_async(arguments))
 }
 
-/// Execute a web search tool
+/// Execute a web search tool (async version)
 ///
 /// # Arguments
 /// * `tool_name` - The ID of the tool to execute
@@ -403,22 +414,32 @@ fn execute_fetch_url(arguments: &Value) -> Result<String> {
 /// # Returns
 /// * `Ok(String)` - Result of the web tool execution
 /// * `Err(anyhow::Error)` - If the tool is unknown or parameters are invalid
-pub fn execute_web_tool(
-    tool_name: &str,
-    arguments: &Value,
-) -> Result<String> {
+pub async fn execute_web_tool_async(tool_name: &str, arguments: &Value) -> Result<String> {
     match tool_name {
-        "web_search" => execute_web_search(arguments),
-        "fetch_url" => execute_fetch_url(arguments),
+        "web_search" => execute_web_search_async(arguments).await,
+        "fetch_url" => execute_fetch_url_async(arguments).await,
         _ => {
             // Verify this is a known web tool before returning unknown error
             if get_all_web_tools().iter().any(|t| t.id == tool_name) {
-                Err(anyhow::anyhow!("Web tool '{}' is not implemented", tool_name))
+                Err(anyhow::anyhow!(
+                    "Web tool '{}' is not implemented",
+                    tool_name
+                ))
             } else {
                 Err(anyhow::anyhow!("Unknown web tool: {}", tool_name))
             }
         }
     }
+}
+
+/// Execute a web search tool (sync wrapper - kept for backward compatibility)
+#[allow(dead_code)]
+pub fn execute_web_tool(tool_name: &str, arguments: &Value) -> Result<String> {
+    tokio::task::block_in_place(|| {
+        let rt = tokio::runtime::Runtime::new()
+            .map_err(|e| anyhow::anyhow!("Failed to create runtime: {}", e))?;
+        rt.block_on(execute_web_tool_async(tool_name, arguments))
+    })
 }
 
 #[cfg(test)]
@@ -458,7 +479,10 @@ mod tests {
                 }
             }
             Err(e) => {
-                println!("Search error (may be expected if provider/network unavailable): {}", e);
+                println!(
+                    "Search error (may be expected if provider/network unavailable): {}",
+                    e
+                );
             }
         }
     }
@@ -467,13 +491,13 @@ mod tests {
     #[ignore] // Run with: cargo test test_debug_web_search -- --ignored --nocapture
     async fn test_debug_web_search() {
         println!("\n=== Debug Web Search Test ===");
-        
+
         // Test 1: DuckDuckGo with simple query
         println!("\n--- Test 1: DuckDuckGo ---");
         let args = json!({
             "query": "rust"
         });
-        
+
         match execute_web_search_async(&args).await {
             Ok(json_str) => {
                 println!("Raw result: {}", json_str);
@@ -484,8 +508,9 @@ mod tests {
                     if let Some(results) = parsed["results"].as_array() {
                         println!("Results array length: {}", results.len());
                         for (i, r) in results.iter().enumerate() {
-                            println!("  Result {}: title={}, url={}", 
-                                i, 
+                            println!(
+                                "  Result {}: title={}, url={}",
+                                i,
                                 r.get("title").and_then(|v| v.as_str()).unwrap_or("N/A"),
                                 r.get("url").and_then(|v| v.as_str()).unwrap_or("N/A")
                             );
@@ -505,7 +530,7 @@ mod tests {
             "query": "machine learning",
             "provider": "arxiv"
         });
-        
+
         match execute_web_search_async(&args).await {
             Ok(json_str) => {
                 println!("Raw result: {}", json_str);
@@ -516,8 +541,9 @@ mod tests {
                     if let Some(results) = parsed["results"].as_array() {
                         println!("Results array length: {}", results.len());
                         for (i, r) in results.iter().take(3).enumerate() {
-                            println!("  Result {}: title={}, url={}", 
-                                i, 
+                            println!(
+                                "  Result {}: title={}, url={}",
+                                i,
                                 r.get("title").and_then(|v| v.as_str()).unwrap_or("N/A"),
                                 r.get("url").and_then(|v| v.as_str()).unwrap_or("N/A")
                             );
@@ -536,7 +562,7 @@ mod tests {
     #[ignore] // Run with: cargo test test_direct_websearch_crate -- --ignored --nocapture
     async fn test_direct_websearch_crate() {
         println!("\n=== Direct WebSearch Crate Test ===");
-        
+
         // Test with DuckDuckGo directly
         println!("\n--- Direct DuckDuckGo Provider ---");
         let provider = DuckDuckGoProvider::new();
@@ -546,7 +572,7 @@ mod tests {
             provider: Box::new(provider),
             ..Default::default()
         };
-        
+
         match web_search(options).await {
             Ok(results) => {
                 println!("SUCCESS: Got {} results", results.len());
@@ -572,7 +598,7 @@ mod tests {
             provider: Box::new(provider),
             ..Default::default()
         };
-        
+
         match web_search(options).await {
             Ok(results) => {
                 println!("SUCCESS: Got {} results", results.len());
@@ -605,7 +631,10 @@ mod tests {
             }
             Err(e) => {
                 // May fail in environments without internet access
-                println!("Fetch error (may be expected in offline environments): {}", e);
+                println!(
+                    "Fetch error (may be expected in offline environments): {}",
+                    e
+                );
             }
         }
     }
@@ -624,8 +653,13 @@ mod tests {
             Ok(result_json) => {
                 println!("Result: {}", result_json);
                 if let Ok(parsed) = serde_json::from_str::<Value>(&result_json) {
-                    if parsed["status"] == "success" && parsed["result_count"].as_u64().unwrap_or(0) > 0 {
-                        println!("✓ ArXiv search works! Got {} results", parsed["result_count"]);
+                    if parsed["status"] == "success"
+                        && parsed["result_count"].as_u64().unwrap_or(0) > 0
+                    {
+                        println!(
+                            "✓ ArXiv search works! Got {} results",
+                            parsed["result_count"]
+                        );
                     } else {
                         println!("✗ ArXiv returned 0 results or error");
                     }
@@ -639,7 +673,7 @@ mod tests {
     #[ignore] // Run with: cargo test test_duckduckgo_html_diagnostic -- --ignored --nocapture
     async fn test_duckduckgo_html_diagnostic() {
         println!("\n=== DuckDuckGo HTML Diagnostic ===");
-        
+
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(10))
             .build()
@@ -650,7 +684,10 @@ mod tests {
 
         match client
             .get(url)
-            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            .header(
+                "User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            )
             .send()
             .await
         {
@@ -664,10 +701,10 @@ mod tests {
                         } else {
                             println!("Full HTML:\n{}", html);
                         }
-                        
+
                         // Try to find result elements
                         let document = Html::parse_document(&html);
-                        
+
                         // Try different selectors
                         let selectors = vec![
                             ("h2.result__title a", "Original websearch selector"),
@@ -676,7 +713,7 @@ mod tests {
                             (".result a", "Just .result a"),
                             ("a[href^='http']", "All external links"),
                         ];
-                        
+
                         for (selector_str, desc) in selectors {
                             if let Ok(sel) = Selector::parse(selector_str) {
                                 let count = document.select(&sel).count();

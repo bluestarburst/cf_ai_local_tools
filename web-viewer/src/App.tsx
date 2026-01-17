@@ -3,17 +3,26 @@
  * Layout with sidebar, agent editor, and chat interface
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AgentList } from './components/AgentList';
 import { AgentEditor } from './components/AgentEditor';
 import { ChatInterfaceV3 } from './components/ChatInterfaceV3';
 import { useAgentStore } from './store/agentStore';
+import { useWebSocketStore } from './store/webSocketStore';
 
 type View = 'editor' | 'chat';
 
 function App() {
   const [currentView, setCurrentView] = useState<View>('editor');
   const { currentAgent, createAgent } = useAgentStore();
+  const { connected, connect } = useWebSocketStore();
+
+  // Initialize WebSocket connection on mount
+  useEffect(() => {
+    const wsUrl = import.meta.env.VITE_WORKER_URL || 'http://localhost:8787';
+    const wsWebSocketUrl = wsUrl.replace(/^http/, 'ws') + '/connect?device=web-viewer';
+    connect(wsWebSocketUrl);
+  }, [connect]);
 
   const handleCreateAgent = () => {
     createAgent({
@@ -56,6 +65,15 @@ function App() {
           >
             Chat
           </button>
+          <div
+            className={`px-3 py-2 rounded-full text-sm font-medium ${
+              connected
+                ? 'bg-green-100 text-green-800'
+                : 'bg-red-100 text-red-800'
+            }`}
+          >
+            {connected ? 'Connected' : 'Disconnected'}
+          </div>
         </div>
       </header>
 

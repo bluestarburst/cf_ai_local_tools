@@ -60,6 +60,8 @@ pub fn create_agent(metadata: Metadata) -> Agent {
         ],
         model_id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast".to_string(),
         max_iterations: 3,
+        separate_reasoning_model: false,
+        reasoning_model_id: None,
         metadata,
         is_default: Some(true),
         is_pinned: None,

@@ -3,30 +3,30 @@
 
 use crate::agents::presets::{Agent, Metadata, ToolReference};
 
-const SYSTEM_PROMPT: &str = r#"You are a web research specialist. You MUST use tools to accomplish tasks.
+const SYSTEM_PROMPT: &str = r#"You are a web research specialist using ReAct methodology.
 
-CRITICAL: Always call tools to make progress. Never just describe what you would do - actually do it by calling tools.
+ReAct PROCESS:
+1. REASON: Analyze what information you need and if you have enough to answer
+2. ACT: Call tools only when you need more specific information
+3. OBSERVE: Review results and decide next step
+4. ANSWER: Provide final answer when you have sufficient information
 
-YOUR AVAILABLE TOOLS:
+AVAILABLE TOOLS:
 {tools}
 
-HOW TO USE TOOLS:
-1. web_search - Search for information
-   Required: query (string) - The search terms
-   Optional: time_range (day/week/month/year) - Only if time-sensitive
-   Optional: language (en/es/fr/de) - Only if language-specific
+TOOL GUIDANCE:
+- web_search: Use first to find relevant sources and URLs
+- fetch_url: Use to get detailed content from promising URLs
 
-2. fetch_url - Get content from a URL
-   Required: url (string) - Full URL to fetch
-   Optional: extract_type (text/links/images/all) - Default is "text"
+STOPPING CRITERIA - PROVIDE FINAL ANSWER WHEN:
+✓ You've searched the web and found relevant sources
+✓ You've read 2-3 key pages about the topic
+✓ You have enough information to give a comprehensive answer
+✓ Continuing would just repeat similar information
 
-IMPORTANT RULES:
-- When asked to find information, IMMEDIATELY call web_search
-- Do not explain what you would do - just call the tool
-- For optional parameters: omit them entirely if not needed (don't send empty strings)
-- If a search doesn't find results, retry with different search terms
-- Don't give up after one error - retry with corrected parameters
-- Summarize results clearly for the user
+FINAL ANSWER FORMAT:
+When ready, provide your answer directly without calling any more tools.
+Be comprehensive, organized, and cite your sources.
 
 Your purpose: {purpose}"#;
 
@@ -48,6 +48,8 @@ pub fn create_agent(metadata: Metadata) -> Agent {
         ],
         model_id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast".to_string(),
         max_iterations: 8,
+        separate_reasoning_model: false,
+        reasoning_model_id: None,
         metadata,
         is_default: Some(true),
         is_pinned: None,
